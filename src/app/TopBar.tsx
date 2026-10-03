@@ -3,6 +3,7 @@ import { t } from '@/lib/i18n';
 import { FORMATS } from '@/lib/formats';
 import { useProjectStore, selectCanRedo, selectCanUndo } from '@/store/projectStore';
 import { useUIStore } from '@/store/uiStore';
+import { useCaptureStore } from '@/store/captureStore';
 import { closeProject } from '@/features/projects/persistence';
 import { Button, TextInput } from './ui';
 import { Icon } from './Icons';
@@ -17,6 +18,7 @@ export function TopBar() {
   const setMeta = useProjectStore((s) => s.setMeta);
   const setExportOpen = useUIStore((s) => s.setExportOpen);
   const setShortcutsOpen = useUIStore((s) => s.setShortcutsOpen);
+  const capturing = useCaptureStore((s) => s.recState !== 'idle');
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
 
@@ -39,7 +41,7 @@ export function TopBar() {
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b border-zinc-800 bg-zinc-900/80 px-3">
-      <Button variant="ghost" size="sm" icon="back" onClick={() => void closeProject()}>
+      <Button variant="ghost" size="sm" icon="back" disabled={capturing} onClick={() => void closeProject()}>
         {t('topbar.backToProjects')}
       </Button>
       <div className="h-5 w-px bg-zinc-800" />

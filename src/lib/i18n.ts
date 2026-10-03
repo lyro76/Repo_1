@@ -124,6 +124,14 @@ export const fr = {
   'capture.saving': 'Finalisation du clip…',
   'capture.shortcuts': 'R : enregistrer / arrêter · P : pause',
   'capture.includeSystemAudio': "Inclure le son de l'écran",
+  'capture.screenFit': 'Cadrage de l’écran',
+  'capture.screenFit.contain': 'Entier (fond flou)',
+  'capture.screenFit.cover': 'Remplir (recadré)',
+  'capture.mirror': 'Effet miroir webcam',
+  'capture.countdownToggle': 'Compte à rebours 3-2-1',
+  'capture.formatMismatch': 'Le projet est en {project} : le clip sera adapté avec des bandes.',
+  'capture.dragHint': 'Glissez la webcam pour la déplacer',
+  'capture.elapsed': 'Durée',
   'capture.previewOnly': 'Les sources ne sont pas enregistrées tant que vous ne cliquez pas sur Enregistrer.',
 
   // Médias

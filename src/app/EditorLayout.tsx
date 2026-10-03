@@ -12,6 +12,8 @@ import { MediaPanel } from '@/features/editor/MediaPanel';
 import { ExportDialog } from '@/features/export/ExportDialog';
 import { ShortcutsDialog } from './ShortcutsDialog';
 import { useEditorShortcuts } from '@/features/editor/useEditorShortcuts';
+import { useEffect } from 'react';
+import { disposeCaptureEngine } from '@/features/capture/engine';
 
 function Tabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (v: T) => void; tabs: { id: T; label: string }[] }) {
   return (
@@ -45,6 +47,9 @@ export function EditorLayout() {
   const setShortcutsOpen = useUIStore((s) => s.setShortcutsOpen);
 
   useEditorShortcuts();
+
+  // Libère caméra, écran et micro en quittant l'éditeur.
+  useEffect(() => () => disposeCaptureEngine(), []);
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">

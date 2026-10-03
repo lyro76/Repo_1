@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-accent: #8b5cf6;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+  font-family: var(--font-sans);
+  overscroll-behavior: none;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3f3f46 transparent;
+}
+
+input[type="range"] {
+  @apply h-1.5 w-full cursor-pointer appearance-none rounded-full bg-zinc-700 accent-violet-500;
+}
+
+input[type="color"] {
+  @apply h-8 w-10 cursor-pointer rounded-md border border-zinc-700 bg-zinc-900 p-0.5;
+}
+
+.panel-title {
+  @apply text-[11px] font-semibold uppercase tracking-wider text-zinc-400;
+}
+
+.field-label {
+  @apply mb-1 block text-xs font-medium text-zinc-400;
+}
+
+.select {
+  @apply w-full rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-violet-500;
+}
+
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}

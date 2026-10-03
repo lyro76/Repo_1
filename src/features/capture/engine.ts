@@ -65,7 +65,7 @@ class CaptureEngine {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'h-full w-full object-contain';
     const ctx = this.canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Canvas 2D indisponible');
+    if (!ctx) throw new Error(t('error.canvas'));
     this.ctx = ctx;
     this.render();
   }

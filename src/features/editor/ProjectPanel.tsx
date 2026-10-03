@@ -14,7 +14,12 @@ export function ProjectPanel() {
       <Field label={t('props.projectName')}>
         <TextInput
           value={project.name}
-          onChange={(e) => setMeta({ name: e.target.value })}
+          onFocus={() => useProjectStore.getState().beginTransaction()}
+          onBlur={() => useProjectStore.getState().endTransaction()}
+          onChange={(e) => {
+            const name = e.target.value;
+            useProjectStore.getState().edit((p) => ({ ...p, name, updatedAt: Date.now() }));
+          }}
         />
       </Field>
       <Field label={t('props.projectFormat')}>

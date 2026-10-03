@@ -73,7 +73,7 @@ export function TopBar() {
           </button>
         )}
         <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
-          {FORMATS[project.format].label} · {project.fps} ips
+          {FORMATS[project.format].label} · {t('common.fpsShort', { fps: project.fps })}
         </span>
       </div>
       <span className={`ml-2 hidden text-[11px] sm:inline ${saveState === 'error' ? 'text-red-400' : 'text-zinc-500'}`}>{saveLabel}</span>

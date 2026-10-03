@@ -14,6 +14,7 @@ export type UIStore = {
   leftTab: LeftTab;
   rightTab: RightTab;
   exportOpen: boolean;
+  exporting: boolean;
   shortcutsOpen: boolean;
   toasts: Toast[];
 
@@ -22,6 +23,7 @@ export type UIStore = {
   setLeftTab: (tab: LeftTab) => void;
   setRightTab: (tab: RightTab) => void;
   setExportOpen: (open: boolean) => void;
+  setExporting: (exporting: boolean) => void;
   setShortcutsOpen: (open: boolean) => void;
   notify: (message: string, kind?: ToastKind) => void;
   dismiss: (id: number) => void;
@@ -35,6 +37,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
   leftTab: 'studio',
   rightTab: 'properties',
   exportOpen: false,
+  exporting: false,
   shortcutsOpen: false,
   toasts: [],
 
@@ -43,6 +46,7 @@ export const useUIStore = create<UIStore>((set, get) => ({
   setLeftTab: (leftTab) => set({ leftTab }),
   setRightTab: (rightTab) => set({ rightTab }),
   setExportOpen: (exportOpen) => set({ exportOpen }),
+  setExporting: (exporting) => set({ exporting }),
   setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   notify: (message, kind = 'info') => {
     const id = ++toastSeq;

@@ -1,11 +1,12 @@
 import type { Format } from '@/types';
+import { t } from './i18n';
 
 export type FormatInfo = { width: number; height: number; label: string; hint: string };
 
 export const FORMATS: Record<Format, FormatInfo> = {
-  '9:16': { width: 1080, height: 1920, label: '9:16', hint: 'TikTok · Reels · Shorts' },
-  '1:1': { width: 1080, height: 1080, label: '1:1', hint: 'Instagram carré' },
-  '16:9': { width: 1920, height: 1080, label: '16:9', hint: 'YouTube' },
+  '9:16': { width: 1080, height: 1920, label: '9:16', hint: t('format.hint.9:16') },
+  '1:1': { width: 1080, height: 1080, label: '1:1', hint: t('format.hint.1:1') },
+  '16:9': { width: 1920, height: 1080, label: '16:9', hint: t('format.hint.16:9') },
 };
 
 export const FORMAT_LIST: Format[] = ['9:16', '1:1', '16:9'];

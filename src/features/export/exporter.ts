@@ -1,4 +1,5 @@
 import fixWebmDuration from 'fix-webm-duration';
+import { t } from '@/lib/i18n';
 import type { Project } from '@/types';
 import { FORMATS } from '@/lib/formats';
 import { createTicker } from '@/lib/ticker';
@@ -50,14 +51,14 @@ export async function renderToWebm(
   const duration = projectDuration(project);
   const preset = getPreset(settings.preset);
   const mimeType = pickRecorderMimeType(VIDEO_RECORDER_TYPES);
-  if (!mimeType) throw new Error('MediaRecorder WebM indisponible');
+  if (!mimeType) throw new Error(t('error.recorder'));
 
   // Canevas de sortie au format du préréglage.
   const canvas = document.createElement('canvas');
   canvas.width = preset.width;
   canvas.height = preset.height;
   const ctx = canvas.getContext('2d', { alpha: false });
-  if (!ctx) throw new Error('Canvas 2D indisponible');
+  if (!ctx) throw new Error(t('error.canvas'));
 
   // Le projet est rendu à son propre format puis placé (bandes noires si besoin).
   const projectSize = FORMATS[project.format];
@@ -69,7 +70,7 @@ export async function renderToWebm(
     stage.height = Math.round(placement.height);
   }
   const stageCtx = sameFormat ? ctx : stage.getContext('2d', { alpha: false });
-  if (!stageCtx) throw new Error('Canvas 2D indisponible');
+  if (!stageCtx) throw new Error(t('error.canvas'));
 
   const audioCtx = new AudioContext({ sampleRate: 48000 });
   await audioCtx.resume();
@@ -179,9 +180,9 @@ export async function convertToMp4(
       onProgress('encode', 0);
       const code = await ffmpeg.exec(mp4Args(settings, 'input.webm', 'output.mp4'));
       throwIfAborted(signal);
-      if (code !== 0) throw new Error(`ffmpeg (code ${code})`);
+      if (code !== 0) throw new Error(t('error.ffmpegCode', { code }));
       const data = await ffmpeg.readFile('output.mp4');
-      if (typeof data === 'string') throw new Error('ffmpeg : sortie invalide');
+      if (typeof data === 'string') throw new Error(t('error.ffmpegOutput'));
       await ffmpeg.deleteFile('input.webm').catch(() => undefined);
       await ffmpeg.deleteFile('output.mp4').catch(() => undefined);
       onProgress('encode', 1);

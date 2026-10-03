@@ -1,4 +1,4 @@
-import type { Clip, Project, Track, TrackType } from '@/types';
+import type { Clip, Project, Track, TrackType, Transition } from '@/types';
 import { roundTime } from '@/lib/time';
 import {
   MIN_CLIP_DURATION,
@@ -285,4 +285,32 @@ export function clipsUsingMedia(project: Project, mediaId: string): string[] {
   return Object.values(project.clips)
     .filter((c) => c.mediaId === mediaId)
     .map((c) => c.id);
+}
+
+export type TransitionEdge = 'in' | 'out';
+export const TRANSITION_MIN = 0.1;
+export const TRANSITION_MAX = 3;
+
+/** Définit la transition d'entrée ou de sortie d'un clip (durée bornée à la moitié du clip). */
+export function setTransition(project: Project, clipId: string, edge: TransitionEdge, transition: Transition | undefined): Project {
+  const clip = project.clips[clipId];
+  if (!clip) return project;
+  const key = edge === 'in' ? 'transitionIn' : 'transitionOut';
+  if (!transition || transition.type === 'none') {
+    if (!clip[key]) return project;
+    return withClip(project, { ...clip, [key]: undefined });
+  }
+  const maxDuration = Math.max(TRANSITION_MIN, Math.min(TRANSITION_MAX, clip.duration / 2));
+  const duration = roundTime(Math.min(maxDuration, Math.max(TRANSITION_MIN, transition.duration)));
+  return withClip(project, { ...clip, [key]: { type: transition.type, duration } });
+}
+
+/** Applique la même transition à la jonction entre un clip et le suivant (sortie de l'un, entrée de l'autre). */
+export function setJunctionTransition(project: Project, clipId: string, transition: Transition | undefined): Project {
+  const clip = project.clips[clipId];
+  if (!clip) return project;
+  let next = setTransition(project, clipId, 'out', transition);
+  const following = trackClips(next, clip.trackId).find((c) => c.id !== clipId && Math.abs(c.start - clipEnd(clip)) < 0.05);
+  if (following) next = setTransition(next, following.id, 'in', transition);
+  return next;
 }

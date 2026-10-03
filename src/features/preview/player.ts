@@ -1,3 +1,4 @@
+import { t } from '@/lib/i18n';
 import { FORMATS } from '@/lib/formats';
 import { projectDuration } from '@/lib/timeline/clips';
 import { useProjectStore } from '@/store/projectStore';
@@ -30,7 +31,7 @@ class Player {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'h-full w-full';
     const ctx = this.canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('Canvas 2D indisponible');
+    if (!ctx) throw new Error(t('error.canvas'));
     this.ctx = ctx;
     this.audioCtx = new AudioContext();
     this.master = this.audioCtx.createGain();

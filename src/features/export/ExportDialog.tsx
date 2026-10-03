@@ -82,6 +82,7 @@ export function ExportDialog() {
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus({ kind: 'running', phase: 'render', ratio: 0 });
+    useUIStore.getState().setExporting(true);
     try {
       const blob = await exportProject(
         project,
@@ -104,6 +105,7 @@ export function ExportDialog() {
       }
     } finally {
       abortRef.current = null;
+      useUIStore.getState().setExporting(false);
     }
   };
 

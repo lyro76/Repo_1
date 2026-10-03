@@ -9,29 +9,13 @@ export const fr = {
   'common.create': 'Créer',
   'common.delete': 'Supprimer',
   'common.rename': 'Renommer',
-  'common.open': 'Ouvrir',
-  'common.save': 'Enregistrer',
-  'common.confirm': 'Confirmer',
-  'common.yes': 'Oui',
-  'common.no': 'Non',
   'common.loading': 'Chargement…',
-  'common.back': 'Retour',
-  'common.name': 'Nom',
-  'common.format': 'Format',
-  'common.fps': 'Images par seconde',
-  'common.duration': 'Durée',
-  'common.start': 'Début',
-  'common.none': 'Aucune',
-  'common.unknown': 'Inconnu',
   'common.untitled': 'Sans titre',
-  'common.error': 'Erreur',
-  'common.optional': 'optionnel',
 
   // Accueil / projets
   'home.title': 'Mes projets',
   'home.subtitle': 'Vos projets sont enregistrés localement dans ce navigateur.',
   'home.newProject': 'Nouveau projet',
-  'home.recent': 'Projets récents',
   'home.empty': "Aucun projet pour l'instant. Créez-en un pour commencer.",
   'home.projectName': 'Nom du projet',
   'home.projectNamePlaceholder': 'Ma vidéo TikTok',
@@ -44,6 +28,21 @@ export const fr = {
   'home.storageInfo': 'Stockage utilisé : {used}',
 
   // Formats
+  'format.hint.9:16': 'TikTok · Reels · Shorts',
+  'format.hint.1:1': 'Instagram carré',
+  'format.hint.16:9': 'YouTube',
+  'common.fpsShort': '{fps} ips',
+  'error.canvas': 'Canvas 2D indisponible dans ce navigateur.',
+  'error.recorder': 'L’enregistrement vidéo (MediaRecorder WebM) est indisponible.',
+  'error.ffmpegOutput': 'La conversion MP4 n’a produit aucun fichier.',
+  'error.ffmpegCode': 'La conversion MP4 a échoué (code {code}).',
+  'keys.space': 'Espace',
+  'keys.delete': 'Suppr / Retour arrière',
+  'keys.homeEnd': 'Début / Fin',
+  'keys.ctrlWheel': 'Ctrl + molette',
+  'keys.arrows': '← / →',
+  'keys.question': '?',
+  'shortcuts.help': 'Afficher les raccourcis',
   'format.9:16': '9:16 · Vertical (1080×1920)',
   'format.1:1': '1:1 · Carré (1080×1080)',
   'format.16:9': '16:9 · Paysage (1920×1080)',
@@ -112,10 +111,7 @@ export const fr = {
   'capture.stop': 'Stop',
   'capture.recording': 'Enregistrement',
   'capture.paused': 'En pause',
-  'capture.ready': 'Prêt',
-  'capture.countdown': 'Compte à rebours',
   'capture.micLevel': 'Niveau du micro',
-  'capture.micMuted': 'Micro coupé',
   'capture.noSource': 'Activez au moins une source vidéo pour enregistrer.',
   'capture.permissionDenied': "Accès refusé. Vérifiez les autorisations du navigateur.",
   'capture.notSupported': "Votre navigateur ne prend pas en charge cette fonctionnalité.",
@@ -130,8 +126,6 @@ export const fr = {
   'capture.mirror': 'Effet miroir webcam',
   'capture.countdownToggle': 'Compte à rebours 3-2-1',
   'capture.formatMismatch': 'Le projet est en {project} : le clip sera adapté avec des bandes.',
-  'capture.dragHint': 'Glissez la webcam pour la déplacer',
-  'capture.elapsed': 'Durée',
   'capture.previewOnly': 'Les sources ne sont pas enregistrées tant que vous ne cliquez pas sur Enregistrer.',
 
   // Médias
@@ -149,7 +143,6 @@ export const fr = {
   'media.deleteConfirm': 'Supprimer ce média et tous les clips qui l’utilisent ? Cette action ne pourra pas être annulée.',
 
   // Timeline
-  'timeline.title': 'Timeline',
   'timeline.track.video': 'Vidéo',
   'timeline.track.audio': 'Audio',
   'timeline.track.text': 'Texte',
@@ -165,7 +158,6 @@ export const fr = {
   'timeline.zoomFit': 'Ajuster',
   'timeline.snap': 'Aimantation',
   'timeline.empty': 'La timeline est vide. Enregistrez un clip ou importez un média.',
-  'timeline.zoomHint': 'Ctrl + molette pour zoomer',
 
   // Outils d'édition
   'tools.play': 'Lecture (Espace)',
@@ -176,13 +168,11 @@ export const fr = {
   'tools.delete': 'Supprimer (Suppr)',
   'tools.duplicate': 'Dupliquer (Ctrl+D)',
   'tools.addText': 'Ajouter un texte',
-  'tools.import': 'Importer un média',
   'tools.mute': 'Couper le son',
   'tools.unmute': 'Réactiver le son',
 
   // Propriétés
   'props.noSelection': 'Sélectionnez un clip sur la timeline pour modifier ses propriétés.',
-  'props.clip': 'Clip',
   'props.type.video': 'Clip vidéo',
   'props.type.audio': 'Clip audio',
   'props.type.text': 'Clip texte',
@@ -200,6 +190,8 @@ export const fr = {
   'props.transition.fade': 'Fondu',
   'props.transition.fadeBlack': 'Fondu au noir',
   'props.transitionDuration': 'Durée de la transition (s)',
+  'props.transitionJunction': 'Appliquer à la jonction avec le clip suivant',
+  'props.transitionHint': 'Fondu : enchaîné avec le clip voisin s’il est collé. Fondu au noir : passage par le noir.',
   'props.text': 'Texte',
   'props.textContent': 'Contenu',
   'props.font': 'Police',
@@ -219,17 +211,14 @@ export const fr = {
   'props.projectName': 'Nom du projet',
   'props.projectFormat': 'Format',
   'props.projectFps': 'Images par seconde',
-  'props.media': 'Média source',
   'props.layer': 'Piste',
 
   // Aperçu
   'preview.empty': 'Ajoutez des clips pour voir l’aperçu.',
-  'preview.loading': 'Préparation de l’aperçu…',
 
   'preview.dragText': 'Glisser pour déplacer le texte',
   'timeline.trimStart': 'Rogner le début',
   'timeline.trimEnd': 'Rogner la fin',
-  'timeline.trackOptions': 'Options de la piste',
   'timeline.transitionBadge': 'Transition',
 
   // Export
@@ -259,14 +248,9 @@ export const fr = {
   'export.failed': "L'export a échoué : {error}",
   'export.emptyProject': 'La timeline est vide, rien à exporter.',
   'export.mismatch': 'Le format du projet ({project}) diffère du préréglage : la vidéo sera adaptée (bandes noires si nécessaire).',
-  'export.sabMissing': "SharedArrayBuffer indisponible : l'export MP4 nécessite les en-têtes COOP/COEP.",
   'export.fileName': 'Nom du fichier',
   'export.realtimeHint': 'Le rendu dure le temps de la vidéo. Gardez cet onglet visible.',
 
-  'media.dropHere': 'Déposez vos fichiers ici',
-  'media.importing': 'Import de {name}…',
-  'media.duration': 'Durée',
-  'media.size': 'Taille',
   'media.dragHint': 'Glissez un média sur la timeline ou cliquez sur +',
   'props.fit': 'Cadrage',
   'props.fit.contain': 'Entier',
@@ -276,15 +260,10 @@ export const fr = {
   'props.visual': 'Image',
   'props.textPlaceholder': 'Saisissez votre texte',
   'props.textDefault': 'Votre texte',
-  'props.applyToAll': 'Appliquer',
   'toast.mediaDeleted': 'Média supprimé',
   'toast.mediaAdded': 'Ajouté à la timeline',
 
-  'export.result': 'Résultat',
   'export.again': 'Nouvel export',
-  'export.phase.render': 'Rendu de la vidéo',
-  'export.phase.load': 'Chargement de l’encodeur MP4',
-  'export.phase.encode': 'Conversion en MP4',
   'export.mp4Hint': 'Le MP4 est d’abord rendu puis converti dans le navigateur : comptez un peu plus de temps.',
   'export.duration': 'Durée de la vidéo : {duration}',
 
@@ -303,14 +282,10 @@ export const fr = {
   'shortcuts.ctrlWheel': 'Zoom sur la timeline',
 
   // Notifications
-  'toast.undo': 'Action annulée',
-  'toast.redo': 'Action rétablie',
   'toast.clipSplit': 'Clip coupé',
-  'toast.clipDeleted': 'Clip supprimé',
   'toast.clipDuplicated': 'Clip dupliqué',
   'toast.textAdded': 'Texte ajouté',
   'toast.trackAdded': 'Piste ajoutée',
-  'toast.copiedSettings': 'Paramètres appliqués',
   'toast.nothingToSplit': 'Placez la tête de lecture sur un clip pour le couper.',
 } as const;
 

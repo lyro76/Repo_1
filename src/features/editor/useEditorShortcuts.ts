@@ -43,7 +43,7 @@ export function useEditorShortcuts() {
         shortcutHandlers.duplicate?.();
         return;
       }
-      if (ctrl || event.altKey) return;
+      if (ctrl || event.altKey || ui.shortcutsOpen) return;
 
       switch (event.key) {
         case ' ':
@@ -71,6 +71,10 @@ export function useEditorShortcuts() {
         case 'Backspace':
           event.preventDefault();
           shortcutHandlers.delete?.();
+          break;
+        case '?':
+          event.preventDefault();
+          ui.setShortcutsOpen(true);
           break;
         default:
           if (key === 's') {

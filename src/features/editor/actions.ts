@@ -9,6 +9,7 @@ import { deleteClips, duplicateClip, insertClip, pickSplitTargets, splitClipsAt,
 import { useProjectStore } from '@/store/projectStore';
 import { usePlaybackStore } from '@/store/playbackStore';
 import { useUIStore } from '@/store/uiStore';
+import { useCaptureStore } from '@/store/captureStore';
 import { addMediaToProject, removeMediaFromProject } from '@/features/projects/persistence';
 import { shortcutHandlers } from './useEditorShortcuts';
 
@@ -120,6 +121,8 @@ export async function importFiles(files: FileList | File[], placement: { trackId
       const clip = addMediaClip(asset, { trackId: placement.trackId, start });
       if (clip && start !== undefined) start = (useProjectStore.getState().project?.clips[clip.id]?.start ?? start) + clip.duration;
       ui.notify(t('media.imported', { name: file.name }), 'success');
+      // Montre le résultat dans l'aperçu (sauf pendant un enregistrement).
+      if (useCaptureStore.getState().recState === 'idle' && ui.centerTab !== 'preview') ui.setCenterTab('preview');
     } catch {
       ui.notify(t('media.importFailed', { name: file.name }), 'error');
     } finally {

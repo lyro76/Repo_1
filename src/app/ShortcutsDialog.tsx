@@ -2,17 +2,18 @@ import { t } from '@/lib/i18n';
 import { Dialog } from './ui';
 
 const rows: { keys: string; label: string }[] = [
-  { keys: 'Espace', label: t('shortcuts.space') },
+  { keys: t('keys.space'), label: t('shortcuts.space') },
   { keys: 'S', label: t('shortcuts.s') },
-  { keys: 'Suppr / Retour', label: t('shortcuts.delete') },
+  { keys: t('keys.delete'), label: t('shortcuts.delete') },
   { keys: 'Ctrl + Z', label: t('shortcuts.ctrlZ') },
   { keys: 'Ctrl + Y', label: t('shortcuts.ctrlY') },
   { keys: 'Ctrl + D', label: t('shortcuts.ctrlD') },
-  { keys: '← / →', label: t('shortcuts.arrows') },
-  { keys: 'Début / Fin', label: t('shortcuts.home') },
-  { keys: 'Ctrl + molette', label: t('shortcuts.ctrlWheel') },
+  { keys: t('keys.arrows'), label: t('shortcuts.arrows') },
+  { keys: t('keys.homeEnd'), label: t('shortcuts.home') },
+  { keys: t('keys.ctrlWheel'), label: t('shortcuts.ctrlWheel') },
   { keys: 'R', label: t('shortcuts.r') },
   { keys: 'P', label: t('shortcuts.p') },
+  { keys: t('keys.question'), label: t('shortcuts.help') },
 ];
 
 export function ShortcutsDialog({ onClose }: { onClose: () => void }) {

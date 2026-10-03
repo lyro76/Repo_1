@@ -1,5 +1,5 @@
 import type { MediaAsset } from '@/types';
-import { computePeaks } from '@/lib/timeline/view';
+import { computePeaks, normalizePeaks } from '@/lib/timeline/view';
 import { useAnalysisStore } from '@/store/analysisStore';
 
 export const PEAKS_PER_SECOND = 50;
@@ -67,7 +67,7 @@ async function generatePeaks(asset: MediaAsset, url: string) {
   try {
     const audio = await ctx.decodeAudioData(buffer);
     const channels = Array.from({ length: audio.numberOfChannels }, (_, i) => audio.getChannelData(i));
-    useAnalysisStore.getState().setPeaks(asset.id, computePeaks(channels, audio.sampleRate, PEAKS_PER_SECOND));
+    useAnalysisStore.getState().setPeaks(asset.id, normalizePeaks(computePeaks(channels, audio.sampleRate, PEAKS_PER_SECOND)));
   } catch {
     useAnalysisStore.getState().setPeaks(asset.id, new Float32Array(0));
   }

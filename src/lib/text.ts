@@ -1,4 +1,5 @@
 import type { Clip, TextProps } from '@/types';
+import { t } from './i18n';
 
 export const FONT_FAMILIES = [
   'Inter, system-ui, sans-serif',
@@ -21,7 +22,7 @@ export const FONT_LABELS: Record<(typeof FONT_FAMILIES)[number], string> = {
 };
 
 export const DEFAULT_TEXT_PROPS: TextProps = {
-  text: 'Votre texte',
+  text: t('props.textDefault'),
   fontFamily: FONT_FAMILIES[0],
   fontSize: 72,
   color: '#ffffff',

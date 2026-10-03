@@ -146,7 +146,7 @@ export const fr = {
   'media.kind.video': 'Vidéo',
   'media.kind.audio': 'Audio',
   'media.kind.image': 'Image',
-  'media.deleteConfirm': 'Supprimer ce média et tous les clips qui l’utilisent ?',
+  'media.deleteConfirm': 'Supprimer ce média et tous les clips qui l’utilisent ? Cette action ne pourra pas être annulée.',
 
   // Timeline
   'timeline.title': 'Timeline',
@@ -262,6 +262,23 @@ export const fr = {
   'export.sabMissing': "SharedArrayBuffer indisponible : l'export MP4 nécessite les en-têtes COOP/COEP.",
   'export.fileName': 'Nom du fichier',
   'export.realtimeHint': 'Le rendu dure le temps de la vidéo. Gardez cet onglet visible.',
+
+  'media.dropHere': 'Déposez vos fichiers ici',
+  'media.importing': 'Import de {name}…',
+  'media.duration': 'Durée',
+  'media.size': 'Taille',
+  'media.dragHint': 'Glissez un média sur la timeline ou cliquez sur +',
+  'props.fit': 'Cadrage',
+  'props.fit.contain': 'Entier',
+  'props.fit.cover': 'Remplir',
+  'props.timing': 'Placement',
+  'props.audio': 'Audio',
+  'props.visual': 'Image',
+  'props.textPlaceholder': 'Saisissez votre texte',
+  'props.textDefault': 'Votre texte',
+  'props.applyToAll': 'Appliquer',
+  'toast.mediaDeleted': 'Média supprimé',
+  'toast.mediaAdded': 'Ajouté à la timeline',
 
   // Raccourcis
   'shortcuts.title': 'Raccourcis clavier',

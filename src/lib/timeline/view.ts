@@ -83,3 +83,13 @@ export function peakBetween(peaks: Float32Array, peaksPerSecond: number, from: n
   }
   return max;
 }
+
+/** Normalise des pics pour que le plus fort vaille 1 (lisibilité des formes d'onde). */
+export function normalizePeaks(peaks: Float32Array, floor = 0.02): Float32Array {
+  let max = 0;
+  for (const v of peaks) if (v > max) max = v;
+  if (max < floor) return peaks;
+  const out = new Float32Array(peaks.length);
+  for (let i = 0; i < peaks.length; i++) out[i] = (peaks[i] ?? 0) / max;
+  return out;
+}

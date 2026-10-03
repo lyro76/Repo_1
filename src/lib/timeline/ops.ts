@@ -223,3 +223,66 @@ export function renameTrack(project: Project, trackId: string, name: string): Pr
   if (!track) return project;
   return touch(replaceTrack(project, { ...track, name }));
 }
+
+export const SPEEDS = [0.5, 1, 1.5, 2] as const;
+
+/**
+ * Change la vitesse d'un clip : la durée affichée est recalculée pour
+ * couvrir la même portion du média, bornée par le média et le clip suivant.
+ */
+export function setClipSpeed(project: Project, clipId: string, speed: number, mediaDuration?: number): Project {
+  const clip = project.clips[clipId];
+  if (!clip || speed <= 0 || speed === clip.speed) return project;
+  const sourceLength = clip.duration * clip.speed;
+  let duration = sourceLength / speed;
+  const withSpeed: Clip = { ...clip, speed };
+  duration = Math.min(duration, maxClipDuration(withSpeed, mediaDuration));
+  const next = trackClips(project, clip.trackId).find((c) => c.id !== clipId && c.start >= clipEnd(clip) - 1e-6);
+  if (next) duration = Math.min(duration, next.start - clip.start);
+  duration = Math.max(MIN_CLIP_DURATION, roundTime(duration));
+  return withClip(project, { ...withSpeed, duration });
+}
+
+/** Fixe la durée d'un clip (via le bord de fin). */
+export function setClipDuration(project: Project, clipId: string, duration: number, mediaDuration?: number): Project {
+  const clip = project.clips[clipId];
+  if (!clip) return project;
+  return trimClip(project, clipId, 'end', clip.start + duration, mediaDuration);
+}
+
+/** Clips à couper : le clip sélectionné s'il est sous la tête de lecture, sinon tous ceux sous la tête de lecture. */
+export function pickSplitTargets(project: Project, time: number, selectedId: string | null): string[] {
+  const inside = (c: Clip) => time > c.start + MIN_CLIP_DURATION && time < clipEnd(c) - MIN_CLIP_DURATION;
+  const selected = selectedId ? project.clips[selectedId] : undefined;
+  if (selected) return inside(selected) ? [selected.id] : [];
+  return Object.values(project.clips)
+    .filter(inside)
+    .map((c) => c.id);
+}
+
+/** Coupe plusieurs clips au même instant. Retourne le projet et les nouveaux identifiants. */
+export function splitClipsAt(
+  project: Project,
+  clipIds: string[],
+  time: number,
+  makeId: () => string,
+): { project: Project; created: string[] } {
+  let next = project;
+  const created: string[] = [];
+  for (const id of clipIds) {
+    const newId = makeId();
+    const result = splitClipAt(next, id, time, newId);
+    if (result !== next) {
+      created.push(newId);
+      next = result;
+    }
+  }
+  return { project: next, created };
+}
+
+/** Clips qui utilisent un média. */
+export function clipsUsingMedia(project: Project, mediaId: string): string[] {
+  return Object.values(project.clips)
+    .filter((c) => c.mediaId === mediaId)
+    .map((c) => c.id);
+}

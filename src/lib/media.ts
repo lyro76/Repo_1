@@ -21,6 +21,9 @@ export function classifyFile(name: string, mimeType: string): MediaKind | undefi
 
 export const DEFAULT_IMAGE_DURATION = 5;
 
+/** Type de donnée utilisé pour glisser un média de la bibliothèque vers la timeline. */
+export const MEDIA_DRAG_TYPE = 'application/x-clipstudio-media';
+
 export type MediaProbe = {
   duration: number;
   width?: number;

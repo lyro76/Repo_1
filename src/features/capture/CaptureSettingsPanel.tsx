@@ -171,7 +171,7 @@ export function CaptureSettingsPanel() {
           <option value="screenOnly">{t('capture.layout.screenOnly')}</option>
         </Select>
         {settings.layout !== 'webcamOnly' && (
-          <Field label={t('capture.screenFit')}>
+          <Field group label={t('capture.screenFit')}>
             <SegmentedControl<ScreenFit>
               size="sm"
               value={settings.screenFit}
@@ -186,7 +186,7 @@ export function CaptureSettingsPanel() {
         {settings.layout === 'screenPip' && (
           <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3">
             <span className="field-label">{t('capture.pip')}</span>
-            <Field label={t('capture.pipPosition')} hint={t('capture.pos.hint')}>
+            <Field group label={t('capture.pipPosition')} hint={t('capture.pos.hint')}>
               <div className="grid grid-cols-2 gap-1.5">
                 {(['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as PipCorner[]).map((corner) => (
                   <Button key={corner} size="sm" onClick={() => placeCorner(corner)}>
@@ -205,7 +205,7 @@ export function CaptureSettingsPanel() {
                 onChange={(e) => updatePip({ size: Number(e.target.value) })}
               />
             </Field>
-            <Field label={t('capture.pipShape')}>
+            <Field group label={t('capture.pipShape')}>
               <SegmentedControl<PipShape>
                 size="sm"
                 value={settings.pip.shape}
@@ -235,7 +235,7 @@ export function CaptureSettingsPanel() {
             <input type="color" value={settings.textColor} onChange={(e) => update({ textColor: e.target.value })} />
           </Field>
           <div className="flex-1">
-            <Field label={t('capture.textPosition')}>
+            <Field group label={t('capture.textPosition')}>
               <SegmentedControl<TextPosition>
                 size="sm"
                 value={settings.textPosition}

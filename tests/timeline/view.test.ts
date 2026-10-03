@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   computePeaks,
   fitZoom,
+  normalizePeaks,
   peakBetween,
   pxToTime,
   scrollForZoom,
@@ -64,5 +65,11 @@ describe('vue de la timeline', () => {
     expect(peakBetween(peaks, 2, 1, 2)).toBeCloseTo(0.3);
     expect(peakBetween(peaks, 2, 10, 11)).toBeCloseTo(0.2);
     expect(peakBetween(new Float32Array(0), 2, 0, 1)).toBe(0);
+  });
+
+  it('normalise les pics', () => {
+    expect(Array.from(normalizePeaks(new Float32Array([0.1, 0.2, 0.05])))).toEqual([0.5, 1, 0.25]);
+    const silent = new Float32Array([0.001, 0.002]);
+    expect(normalizePeaks(silent)).toBe(silent);
   });
 });

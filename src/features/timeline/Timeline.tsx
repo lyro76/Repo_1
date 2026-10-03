@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { TrackType } from '@/types';
 import { t } from '@/lib/i18n';
 import { newId } from '@/lib/ids';
@@ -14,6 +14,8 @@ import { Ruler } from './Ruler';
 import { TrackHeader } from './TrackHeader';
 import { HEADER_WIDTH, LANE_HEIGHT, RULER_HEIGHT, useTimelineUi, zoomTo } from './timelineUi';
 import { ensureAnalysis } from './mediaAnalysis';
+import { MEDIA_DRAG_TYPE } from '@/lib/media';
+import { addMediaClip, importFiles } from '@/features/editor/actions';
 
 const TAIL_SECONDS = 30;
 
@@ -144,6 +146,17 @@ export function Timeline() {
     target.addEventListener('pointercancel', up);
   };
 
+  const acceptsDrop = (event: DragEvent) => event.dataTransfer.types.includes(MEDIA_DRAG_TYPE) || event.dataTransfer.types.includes('Files');
+
+  const onDrop = (event: DragEvent<HTMLDivElement>, trackId: string) => {
+    event.preventDefault();
+    const start = timeFromClientX(event.clientX);
+    const mediaId = event.dataTransfer.getData(MEDIA_DRAG_TYPE);
+    const asset = mediaId ? useProjectStore.getState().media[mediaId] : undefined;
+    if (asset) addMediaClip(asset, { trackId, start });
+    else if (event.dataTransfer.files.length > 0) void importFiles(event.dataTransfer.files, { trackId, start });
+  };
+
   const totalHeight = RULER_HEIGHT + tracks.reduce((sum, tr) => sum + LANE_HEIGHT[tr.type], 0);
 
   return (
@@ -173,6 +186,13 @@ export function Timeline() {
               className={`relative border-b border-zinc-800/80 ${track.muted ? 'bg-zinc-900/20' : 'bg-zinc-900/40'}`}
               style={{ width: contentWidth, height: LANE_HEIGHT[track.type] }}
               onPointerDown={(e) => startScrub(e, true)}
+              onDragOver={(e) => {
+                if (acceptsDrop(e)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
+                }
+              }}
+              onDrop={(e) => onDrop(e, track.id)}
             >
               {trackClips(project, track.id).map((clip) => (
                 <ClipView

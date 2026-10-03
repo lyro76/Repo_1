@@ -28,6 +28,10 @@ export type ProjectStore = {
 
   undo: () => boolean;
   redo: () => boolean;
+  /** Vide l'historique (après une action irréversible comme la suppression d'un média). */
+  resetHistory: () => void;
+  /** Modifie le projet : transitoire si une interaction est en cours, sinon entrée d'historique. */
+  edit: (mutate: Mutator) => void;
 
   setMeta: (patch: Partial<Pick<Project, 'name' | 'format' | 'fps'>>) => void;
   setFormat: (format: Format) => void;
@@ -116,6 +120,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     if (!project || next === undefined) return false;
     set({ project: next, past: [...past, project], future: future.slice(1), saveState: 'dirty' });
     return true;
+  },
+
+  resetHistory: () => set({ past: [], future: [] }),
+
+  edit: (mutate) => {
+    if (get().transactionBase) get().updateTransient(mutate);
+    else get().commit(mutate);
   },
 
   setMeta: (patch) => {

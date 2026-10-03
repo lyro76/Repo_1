@@ -54,14 +54,26 @@ export function Select({ className = '', children, ...rest }: SelectHTMLAttribut
   );
 }
 
-export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
-  return (
-    <label className="block">
+/**
+ * Champ libellé. `group` : pour des contrôles qui ne sont pas des champs de saisie
+ * (boutons segmentés...), rendu en groupe ARIA plutôt qu'en <label>.
+ */
+export function Field({ label, children, hint, group }: { label: string; children: ReactNode; hint?: string; group?: boolean }) {
+  const content = (
+    <>
       <span className="field-label">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-[11px] text-zinc-500">{hint}</span>}
-    </label>
+    </>
   );
+  if (group) {
+    return (
+      <div role="group" aria-label={label} className="block">
+        {content}
+      </div>
+    );
+  }
+  return <label className="block">{content}</label>;
 }
 
 export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {

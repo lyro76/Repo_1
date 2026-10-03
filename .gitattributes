@@ -1,0 +1,5 @@
+# Les scripts Windows doivent garder des fins de ligne CRLF.
+*.bat text eol=crlf
+# Fichiers compilés et binaires : ne pas toucher aux fins de ligne.
+dist/** -text
+*.wasm binary

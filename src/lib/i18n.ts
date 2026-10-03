@@ -12,6 +12,10 @@ export const fr = {
   'common.loading': 'Chargement…',
   'common.untitled': 'Sans titre',
 
+  'error.title': 'Une erreur est survenue',
+  'error.description': 'ClipStudio a rencontré un problème. Vos projets enregistrés ne sont pas perdus.',
+  'error.reload': 'Recharger la page',
+
   // Accueil / projets
   'home.title': 'Mes projets',
   'home.subtitle': 'Vos projets sont enregistrés localement dans ce navigateur.',

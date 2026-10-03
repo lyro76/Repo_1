@@ -4,14 +4,32 @@ Application web pour **enregistrer des vidéos en temps réel** (webcam, écran,
 les **monter** sur une timeline et les **exporter** au bon format pour TikTok,
 Instagram Reels, YouTube Shorts et YouTube.
 
-Tout tourne dans le navigateur : aucun serveur, aucun envoi de fichiers.
+Tout tourne dans le navigateur, sur votre ordinateur : aucun serveur distant, aucun envoi de fichiers.
 Les projets et les médias restent enregistrés localement (IndexedDB).
 
 Navigateurs cibles : **Chrome** et **Edge** récents.
 
-## Installation et lancement
+## Lancement le plus simple (Python, sans Node.js)
 
-Prérequis : Node.js 20.19+ ou 22.12+.
+L'application déjà compilée est incluse dans le dossier `dist/`.
+Il suffit d'avoir **Python 3.8 ou plus récent** (https://www.python.org/downloads/,
+cocher « Add python.exe to PATH » à l'installation).
+
+- **Windows** : double-cliquez sur **`lancer.bat`**.
+- **Toutes plateformes** : dans un terminal ouvert dans le dossier du projet :
+
+  ```bash
+  python lancer.py
+  ```
+
+Le navigateur s'ouvre sur http://localhost:5173 (Chrome ou Edge si disponibles).
+Laissez la fenêtre du lanceur ouverte pendant l'utilisation ; Ctrl+C pour arrêter.
+
+Ne pas ouvrir `index.html` par double-clic : l'application doit être servie par le lanceur.
+
+## Installation pour le développement (Node.js)
+
+Prérequis : Node.js 20.19+ ou 22.12+. Nécessaire seulement pour modifier le code.
 
 ```bash
 npm install
@@ -28,10 +46,13 @@ Puis ouvrir http://localhost:5173.
 | Commande | Rôle |
 | --- | --- |
 | `npm run dev` | Serveur de développement (en-têtes COOP/COEP inclus) |
-| `npm run build` | Vérification TypeScript stricte + build de production dans `dist/` |
+| `npm run build` | Vérification TypeScript stricte + build de production dans `dist/` (utilisé par `lancer.py`) |
 | `npm run preview` | Sert le build de production (en-têtes COOP/COEP inclus) |
 | `npm test` | Tests unitaires Vitest |
 | `npm run typecheck` | Vérification TypeScript seule |
+
+Après une modification du code, relancez `npm run build` et validez le dossier `dist/`
+pour que `lancer.py` serve la nouvelle version.
 
 ### Déploiement
 

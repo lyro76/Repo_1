@@ -104,12 +104,13 @@ export function startAutosave(): () => void {
   let lastSaved: Project | null = useProjectStore.getState().project;
 
   const unsubscribe = useProjectStore.subscribe((state, previous) => {
-    if (!state.project || state.project === previous.project) return;
+    if (!state.project) return;
     if (state.project.id !== previous.project?.id) {
       lastSaved = state.project;
       return;
     }
     if (state.transactionBase) return; // attend la fin du glisser
+    if (state.project === lastSaved) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;

@@ -226,6 +226,12 @@ export const fr = {
   'preview.empty': 'Ajoutez des clips pour voir l’aperçu.',
   'preview.loading': 'Préparation de l’aperçu…',
 
+  'preview.dragText': 'Glisser pour déplacer le texte',
+  'timeline.trimStart': 'Rogner le début',
+  'timeline.trimEnd': 'Rogner la fin',
+  'timeline.trackOptions': 'Options de la piste',
+  'timeline.transitionBadge': 'Transition',
+
   // Export
   'export.title': 'Exporter la vidéo',
   'export.preset': 'Préréglage',

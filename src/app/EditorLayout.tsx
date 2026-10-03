@@ -14,6 +14,8 @@ import { ShortcutsDialog } from './ShortcutsDialog';
 import { useEditorShortcuts } from '@/features/editor/useEditorShortcuts';
 import { useEffect } from 'react';
 import { disposeCaptureEngine } from '@/features/capture/engine';
+import { disposePlayer } from '@/features/preview/player';
+import { resetAnalysis } from '@/features/timeline/mediaAnalysis';
 
 function Tabs<T extends string>({ value, onChange, tabs }: { value: T; onChange: (v: T) => void; tabs: { id: T; label: string }[] }) {
   return (
@@ -49,7 +51,14 @@ export function EditorLayout() {
   useEditorShortcuts();
 
   // Libère caméra, écran et micro en quittant l'éditeur.
-  useEffect(() => () => disposeCaptureEngine(), []);
+  useEffect(
+    () => () => {
+      disposeCaptureEngine();
+      disposePlayer();
+      resetAnalysis();
+    },
+    [],
+  );
 
   return (
     <div className="flex h-screen flex-col bg-zinc-950 text-zinc-100">

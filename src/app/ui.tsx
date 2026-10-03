@@ -68,21 +68,17 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
   return (
     <label className="flex cursor-pointer items-center justify-between gap-3 text-sm text-zinc-300">
       <span>{label}</span>
-      <span
+      <button
+        type="button"
         role="switch"
         aria-checked={checked}
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === ' ' || e.key === 'Enter') {
-            e.preventDefault();
-            onChange(!checked);
-          }
-        }}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition ${checked ? 'bg-violet-600' : 'bg-zinc-700'}`}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+          checked ? 'bg-violet-600' : 'bg-zinc-700'
+        }`}
       >
         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${checked ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
-      </span>
+      </button>
     </label>
   );
 }

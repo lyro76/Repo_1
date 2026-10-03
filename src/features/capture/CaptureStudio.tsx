@@ -37,7 +37,7 @@ export function CaptureStudio({ active }: { active: boolean }) {
   useEffect(() => {
     const engine = getCaptureEngine();
     const host = hostRef.current;
-    if (host && engine.canvas.parentElement !== host) host.appendChild(engine.canvas);
+    if (host && engine.canvas.parentElement !== host) host.replaceChildren(engine.canvas);
   }, []);
 
   const recording = recState === 'recording' || recState === 'paused';

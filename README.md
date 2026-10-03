@@ -26,3 +26,4 @@ Puis ouvrir http://localhost:5173 dans Chrome ou Edge récent.
 
 - [x] Phase 1 : base du projet, mise en page, modèle de données, écran d'accueil
 - [x] Phase 2 : studio de capture (webcam, écran, micro, composition, enregistrement)
+- [x] Phase 3 : timeline interactive et aperçu synchronisé

@@ -28,3 +28,4 @@ Puis ouvrir http://localhost:5173 dans Chrome ou Edge récent.
 - [x] Phase 2 : studio de capture (webcam, écran, micro, composition, enregistrement)
 - [x] Phase 3 : timeline interactive et aperçu synchronisé
 - [x] Phase 4 : outils d'édition (couper, rogner, dupliquer, volume, vitesse, textes, import, annuler/rétablir)
+- [x] Phase 5 : export WebM et MP4 (ffmpeg.wasm) avec préréglages réseaux sociaux

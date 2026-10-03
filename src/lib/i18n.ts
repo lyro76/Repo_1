@@ -280,6 +280,14 @@ export const fr = {
   'toast.mediaDeleted': 'Média supprimé',
   'toast.mediaAdded': 'Ajouté à la timeline',
 
+  'export.result': 'Résultat',
+  'export.again': 'Nouvel export',
+  'export.phase.render': 'Rendu de la vidéo',
+  'export.phase.load': 'Chargement de l’encodeur MP4',
+  'export.phase.encode': 'Conversion en MP4',
+  'export.mp4Hint': 'Le MP4 est d’abord rendu puis converti dans le navigateur : comptez un peu plus de temps.',
+  'export.duration': 'Durée de la vidéo : {duration}',
+
   // Raccourcis
   'shortcuts.title': 'Raccourcis clavier',
   'shortcuts.space': 'Lecture / pause',

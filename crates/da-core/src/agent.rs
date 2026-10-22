@@ -42,15 +42,34 @@ Règles : SEARCH doit être copié à l'identique et assez long pour être uniqu
 
 const PLAN_SYSTEM: &str = "Tu planifies une tâche de programmation qu'un petit modèle local exécutera ensuite, étape par étape, avec des outils (lire, chercher, éditer, compiler). Écris un plan numéroté, concret et court (au plus 10 étapes) : pour chaque étape, le fichier concerné et ce qu'il faut y écrire (signatures, types, noms). Pas de code complet, pas de préambule.";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Phase {
+    Build,
+    Tests,
+}
+
 /// Identifiants des demandes d'autorisation, uniques pour le processus.
 static APPROVALS: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FixOutcome {
     pub ok: bool,
+    /// `Some(true)` si les tests ont été lancés et passent.
+    pub tests: Option<bool>,
     pub attempts: u32,
     pub remaining: Vec<Diagnostic>,
     pub snapshots: Vec<String>,
+}
+
+impl FixOutcome {
+    /// « build OK », « build et tests OK », « 2 erreur(s) restantes »…
+    pub fn summary(&self) -> String {
+        match (self.ok, self.tests) {
+            (true, Some(true)) => "build et tests OK".into(),
+            (true, _) => "build OK".into(),
+            (false, _) => format!("{} erreur(s) restantes", self.remaining.len()),
+        }
+    }
 }
 
 pub struct Agent {
@@ -162,7 +181,7 @@ impl Agent {
     pub async fn fix_turn(&self, prompt: &str) -> Result<FixOutcome> {
         let out = self.fix().await;
         let summary = match &out {
-            Ok(o) if o.ok => format!("Build OK après {} correctif(s).", o.attempts),
+            Ok(o) if o.ok => format!("{} après {} correctif(s).", o.summary(), o.attempts),
             Ok(o) => format!("{} erreur(s) restantes : {}", o.remaining.len(), o.remaining.iter().take(3).map(|d| d.headline()).collect::<Vec<_>>().join(" ; ")),
             Err(e) => format!("Interrompu : {e:#}"),
         };
@@ -286,7 +305,7 @@ impl Agent {
             turn.files.extend(self.snapshot_files(&out.snapshots));
             turn.files.sort();
             turn.files.dedup();
-            self.emit(Event::Done { ok: out.ok, summary: if out.ok { "build OK".into() } else { format!("{} erreur(s) restantes", out.remaining.len()) } });
+            self.emit(Event::Done { ok: out.ok, summary: out.summary() });
         } else {
             self.emit(Event::Done { ok: finished, summary: "terminé".into() });
         }
@@ -438,6 +457,7 @@ impl Agent {
         loop {
             let (ok, diags) = self.build().await?;
             let mut errors: Vec<Diagnostic> = diags.iter().filter(|d| d.is_error()).cloned().collect();
+            let mut phase = Phase::Build;
 
             // Une suggestion incertaine qui n'a rien arrangé est annulée.
             if let Some((snap, before)) = trial.take() {
@@ -449,21 +469,34 @@ impl Agent {
                 }
             }
 
-            // Les correctifs qui ont fait disparaître leur erreur vont en mémoire.
-            for (d, diff, by) in pending.drain(..) {
-                if !errors.iter().any(|e| e.code == d.code && e.message == d.message && e.file == d.file) {
-                    let _ = memory.record(&FixRecord { code: d.code.clone(), message: d.message.clone(), file: d.file.clone(), diff, backend: by });
+            // Build vert : au tour des tests.
+            if ok {
+                match self.cfg.fix_tests.then(|| self.test_cmd()).flatten() {
+                    Some(cmd) => {
+                        let (tests_ok, failures) = self.run_tests(&cmd).await?;
+                        if tests_ok {
+                            self.remember(&memory, &mut pending, &[]);
+                            return Ok(FixOutcome { ok: true, tests: Some(true), attempts, remaining: vec![], snapshots });
+                        }
+                        errors = failures;
+                        phase = Phase::Tests;
+                    }
+                    None => {
+                        self.remember(&memory, &mut pending, &[]);
+                        return Ok(FixOutcome { ok: true, tests: None, attempts, remaining: vec![], snapshots });
+                    }
                 }
             }
 
-            if ok {
-                return Ok(FixOutcome { ok: true, attempts, remaining: vec![], snapshots });
-            }
+            // Les correctifs qui ont fait disparaître leur erreur vont en mémoire.
+            self.remember(&memory, &mut pending, &errors);
+
             self.emit(Event::Diagnostics { items: errors.clone() });
-            self.emit(Event::Terminal { line: format!("agent › {} erreur(s) capturée(s), correction en cours ({})", errors.len(), backend_name(backend)), stream: Stream::Agent });
+            let what = if phase == Phase::Tests { "test(s) en échec" } else { "erreur(s) capturée(s)" };
+            self.emit(Event::Terminal { line: format!("agent › {} {what}, correction en cours ({})", errors.len(), backend_name(backend)), stream: Stream::Agent });
 
             // 1. Les suggestions sûres du compilateur, sans modèle.
-            if !tried_suggestions {
+            if !tried_suggestions && phase == Phase::Build {
                 tried_suggestions = true;
                 if let Some((snap, certain)) = self.apply_compiler_suggestions(&errors)? {
                     snapshots.push(snap.clone());
@@ -483,13 +516,13 @@ impl Agent {
                         backend_attempts = 0;
                         conversation.clear();
                     }
-                    _ => return Ok(FixOutcome { ok: false, attempts, remaining: errors, snapshots }),
+                    _ => return Ok(FixOutcome { ok: false, tests: None, attempts, remaining: errors, snapshots }),
                 }
             }
             attempts += 1;
             backend_attempts += 1;
 
-            let prompt = self.fix_prompt(&errors, &memory, conversation.is_empty());
+            let prompt = self.fix_prompt(&errors, &memory, conversation.is_empty(), phase);
             conversation.push(Msg::User(format!("{}{prompt}", std::mem::take(&mut feedback))));
             let id = self.step(format!("correctif · tentative {backend_attempts}/{max}"));
             let reply = match self.chat(backend, FIX_SYSTEM, &conversation, &[]).await {
@@ -546,6 +579,61 @@ impl Agent {
         }
     }
 
+    /// Les correctifs dont l'erreur a disparu vont dans la mémoire épisodique.
+    fn remember(&self, memory: &FixMemory, pending: &mut Vec<(Diagnostic, String, String)>, errors: &[Diagnostic]) {
+        for (d, diff, by) in pending.drain(..) {
+            if !errors.iter().any(|e| e.code == d.code && e.message == d.message && e.file == d.file) {
+                let _ = memory.record(&FixRecord { code: d.code.clone(), message: d.message.clone(), file: d.file.clone(), diff, backend: by });
+            }
+        }
+    }
+
+    async fn run_tests(&self, cmd: &str) -> Result<(bool, Vec<Diagnostic>)> {
+        let id = self.step(short_cmd(cmd));
+        let out = self.project.run(cmd, self.host.as_ref(), Duration::from_secs(900)).await?;
+        let mut failures = if out.ok { Vec::new() } else { diag::parse(&out.output) };
+        normalize_paths(&mut failures, &self.project.root);
+        failures.retain(|d| d.is_error());
+        if !out.ok && failures.is_empty() {
+            failures = fallback_diags(&out.output, &self.project.root);
+        }
+        let n = failures.len();
+        self.end(id, if out.ok { format!("OK · {:.1} s", out.seconds).replace('.', ",") } else { plural(n, "échec") }, out.ok);
+        self.emit(Event::Tests { ok: out.ok, failures: n, seconds: out.seconds });
+        Ok((out.ok, failures))
+    }
+
+    /// Fichiers source dont le nom apparaît dans un fichier de test (imports,
+    /// `use`, noms de modules) : c'est souvent là qu'est le bug.
+    fn related_sources(&self, test_files: &[String], already: &[String]) -> Vec<String> {
+        let root = &self.project.root;
+        let text: String = test_files.iter().filter_map(|f| std::fs::read_to_string(root.join(f)).ok()).collect::<Vec<_>>().join("\n");
+        let words: std::collections::HashSet<&str> = text.split(|c: char| !c.is_alphanumeric() && c != '_').filter(|w| w.len() >= 3).collect();
+        let mut out = Vec::new();
+        for p in crate::index::walk(root) {
+            let rel = crate::index::rel(&p);
+            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            let is_test = stem.contains("test") || stem.contains("spec") || rel.split('/').any(|d| d == "tests" || d == "test");
+            if is_test || !crate::project::is_source_ext(ext) || already.contains(&rel) || test_files.contains(&rel) {
+                continue;
+            }
+            // `mod.rs`, `__init__.py`, `index.ts` : c'est le nom du dossier qui compte.
+            let name = if matches!(stem, "mod" | "__init__" | "index" | "lib" | "main") {
+                p.parent().and_then(|d| d.file_name()).and_then(|n| n.to_str()).unwrap_or(stem)
+            } else {
+                stem
+            };
+            if words.contains(name) {
+                out.push(rel);
+                if out.len() == 2 {
+                    break;
+                }
+            }
+        }
+        out
+    }
+
     /// Applique les suggestions du compilateur. Renvoie l'instantané et si
     /// toutes étaient sûres (`MachineApplicable`) ; sinon on n'en garde
     /// qu'une par erreur à suggestion unique, à vérifier au build suivant.
@@ -586,7 +674,7 @@ impl Agent {
         Ok(Some((snap.id, certain)))
     }
 
-    fn fix_prompt(&self, errors: &[Diagnostic], memory: &FixMemory, first: bool) -> String {
+    fn fix_prompt(&self, errors: &[Diagnostic], memory: &FixMemory, first: bool, phase: Phase) -> String {
         let root = &self.project.root;
         let mut p = String::new();
         if first {
@@ -595,9 +683,16 @@ impl Agent {
                 p.push_str(&format!("## NOTES.md\n{}\n\n", notes.trim()));
             }
         } else {
-            p.push_str("Le build échoue encore après ta modification.\n\n");
+            p.push_str("Ça échoue encore après ta modification.\n\n");
         }
-        p.push_str("## Erreurs\n");
+        if phase == Phase::Tests {
+            p.push_str(
+                "## Tests en échec\nLe build passe mais des tests échouent. Corrige le code testé. Ne modifie un test que s'il \
+                 est manifestement faux, et dis-le dans ta phrase d'explication ; ne l'affaiblis jamais pour le faire passer.\n",
+            );
+        } else {
+            p.push_str("## Erreurs\n");
+        }
         for d in errors.iter().take(5) {
             p.push_str(&format!("- {}\n", d.headline()));
             for n in d.notes.iter().take(4) {
@@ -619,6 +714,14 @@ impl Agent {
             let lines: Vec<&str> = src.lines().collect();
             let (a, b) = if lines.len() <= 250 { (0, lines.len()) } else { (d.line.saturating_sub(40) as usize, (d.line as usize + 40).min(lines.len())) };
             p.push_str(&format!("\n## {} (lignes {}-{} sur {})\n```\n{}\n```\n", d.file, a + 1, b, lines.len(), lines[a..b].join("\n")));
+        }
+        if phase == Phase::Tests {
+            for f in self.related_sources(&shown, &shown) {
+                let Ok(src) = std::fs::read_to_string(root.join(&f)) else { continue };
+                let lines: Vec<&str> = src.lines().collect();
+                let b = lines.len().min(250);
+                p.push_str(&format!("\n## {f} (code testé, lignes 1-{b} sur {})\n```\n{}\n```\n", lines.len(), lines[..b].join("\n")));
+            }
         }
 
         let past: Vec<FixRecord> = errors.iter().take(3).flat_map(|d| memory.similar(d, 1)).collect();

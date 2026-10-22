@@ -163,8 +163,7 @@ fn start_fix(app: AppHandle, state: State<AppState>, tab: String, options: Overr
     spawn(&state, &tab, async move {
         match agent.fix_turn("Corrige le build").await {
             Ok(out) => {
-                let summary = if out.ok { "build OK".into() } else { format!("{} erreur(s) restantes", out.remaining.len()) };
-                emit_done(&agent, out.ok, summary);
+                emit_done(&agent, out.ok, out.summary());
             }
             Err(e) => agent_error(&agent, e),
         }

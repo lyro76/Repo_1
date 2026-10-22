@@ -15,6 +15,12 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      # Les tests de bout en bout compilent aussi de vrais projets Go et Python.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - name: pytest
+        run: python3 -m pip install --user pytest
       - name: Tests
         run: cargo test
       - name: Clippy

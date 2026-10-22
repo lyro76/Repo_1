@@ -11,6 +11,7 @@ const config: Config = {
   max_attempts: 3,
   max_steps: 40,
   auto_fix: true,
+  fix_tests: true,
   confirm_writes: false,
   build_cmd: null,
   test_cmd: null,
@@ -91,8 +92,11 @@ const secondHalf: Step[] = [
   [300, { type: "step_start", id: 7, label: "cargo build" }],
   [900, { type: "step_end", id: 7, summary: "OK · 3,2 s", ok: true }],
   [0, { type: "build", ok: true, errors: 0, seconds: 3.2 }],
+  [200, { type: "step_start", id: 8, label: "cargo test" }],
+  [900, { type: "step_end", id: 8, summary: "OK · 2,4 s", ok: true }],
+  [0, { type: "tests", ok: true, failures: 0, seconds: 2.4 }],
   [200, { type: "text", text: "`ClientConfig` a maintenant un champ `timeout: Duration` (5 s par défaut), lu depuis `config.toml` et appliqué à la connexion via `tokio::time::timeout`. Le build passe." }],
-  [0, { type: "done", ok: true, summary: "build OK" }],
+  [0, { type: "done", ok: true, summary: "build et tests OK" }],
 ];
 
 export function demoBackend(): Backend {

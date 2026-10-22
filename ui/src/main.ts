@@ -33,6 +33,7 @@ interface TabState {
   diags: Diagnostic[];
   patch: Patch | null;
   build: { ok: boolean; errors: number; seconds: number } | null;
+  tests: { ok: boolean; failures: number; seconds: number } | null;
   terminal: TermLine[];
   modified: Set<string>;
   lastCommand: string;
@@ -212,7 +213,7 @@ function renderCorrection() {
   const t = cur();
   const body = $("correction");
   const attempt = $("attempt");
-  if (!t || (!t.diags.length && !t.patch && !t.build)) {
+  if (!t || (!t.diags.length && !t.patch && !t.build && !t.tests)) {
     attempt.textContent = "";
     attempt.hidden = true;
     body.replaceChildren(h("div", { class: "muted empty-small" }, "Aucune erreur. Le build est relancé et corrigé automatiquement après chaque tâche."));
@@ -223,6 +224,7 @@ function renderCorrection() {
   if (t.patch) attempt.textContent = t.patch.attempt === 0 ? "compilateur" : `tentative ${t.patch.attempt}/${max} · ${t.patch.backend}`;
 
   const parts: HTMLElement[] = [];
+  if (t.diags.length && t.tests && !t.tests.ok) parts.push(h("div", { class: "muted small" }, "Tests en échec :"));
   for (const d of t.diags.slice(0, 3)) {
     parts.push(
       h("div", { class: "error-card" },
@@ -238,6 +240,15 @@ function renderCorrection() {
       h("div", { class: `build-row mono ${t.build.ok ? "ok" : "err"}` },
         h("span", {}, t.build.ok ? "✓" : "✗"), h("b", {}, short(t.info.build ?? "build")), h("div", { class: "spacer" }),
         h("span", { class: "muted" }, `${t.build.errors} erreur${t.build.errors > 1 ? "s" : ""} · ${t.build.seconds.toFixed(1).replace(".", ",")} s`),
+      ),
+    );
+  }
+  if (t.tests) {
+    const n = t.tests.failures;
+    parts.push(
+      h("div", { class: `build-row mono ${t.tests.ok ? "ok" : "err"}` },
+        h("span", {}, t.tests.ok ? "✓" : "✗"), h("b", {}, short(t.info.test ?? "tests")), h("div", { class: "spacer" }),
+        h("span", { class: "muted" }, `${t.tests.ok ? "passent" : `${n} échec${n > 1 ? "s" : ""}`} · ${t.tests.seconds.toFixed(1).replace(".", ",")} s`),
       ),
     );
   }
@@ -289,6 +300,7 @@ function renderStatus() {
     h("span", {}, t ? `index · ${t.info.files.length} fichiers` : ""),
     h("div", { class: "spacer" }),
     lastBuild ? h("span", { class: lastBuild.ok ? "ok" : "err" }, lastBuild.ok ? "build OK" : `build · ${lastBuild.errors} erreurs`) : "",
+    t?.tests ? h("span", { class: t.tests.ok ? "ok" : "err" }, t.tests.ok ? "tests OK" : `tests · ${t.tests.failures} échec(s)`) : "",
   );
 }
 
@@ -329,7 +341,7 @@ function persist(t: TabState) {
 
 function addTab(info: ProjectInfo) {
   if (!state.tabs.has(info.tab)) {
-    state.tabs.set(info.tab, { info, feed: restoreFeed(info.feed), busy: false, diags: [], patch: null, build: null, terminal: [], modified: new Set(), lastCommand: "", escalated: false });
+    state.tabs.set(info.tab, { info, feed: restoreFeed(info.feed), busy: false, diags: [], patch: null, build: null, tests: null, terminal: [], modified: new Set(), lastCommand: "", escalated: false });
     state.order.push(info.tab);
   }
   select(info.tab);
@@ -359,6 +371,7 @@ function resetRun(t: TabState) {
   t.diags = [];
   t.patch = null;
   t.build = null;
+  t.tests = null;
   t.escalated = false;
 }
 
@@ -412,7 +425,8 @@ async function undoPatch() {
   t.feed.push({ kind: "notice", tone: "warn", text: `Correctif annulé : ${files.join(", ")} restauré.` });
   files.forEach((f) => t.modified.delete(f));
   t.patch = null;
-  t.build = null; // le build d'après correctif ne vaut plus
+  t.build = null; // le build et les tests d'après correctif ne valent plus
+  t.tests = null;
   persist(t);
 
   render();
@@ -446,6 +460,10 @@ function onEvent(tab: string, e: AgentEvent) {
     case "patch":
       t.patch = e;
       t.modified.add(e.file);
+      break;
+    case "tests":
+      t.tests = e;
+      if (e.ok && !t.patch) t.diags = [];
       break;
     case "build":
       t.build = e;

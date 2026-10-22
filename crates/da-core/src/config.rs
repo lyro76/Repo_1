@@ -93,6 +93,9 @@ pub struct Config {
     /// Lance build + correction automatiquement après chaque tâche.
     #[serde(default = "yes")]
     pub auto_fix: bool,
+    /// Lance aussi les tests quand le build passe, et corrige leurs échecs.
+    #[serde(default = "yes")]
+    pub fix_tests: bool,
     /// Demande une confirmation avant chaque écriture de fichier.
     #[serde(default)]
     pub confirm_writes: bool,

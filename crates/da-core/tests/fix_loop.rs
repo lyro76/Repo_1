@@ -284,3 +284,57 @@ async fn second_task_remembers_the_first() {
     assert_eq!(conv.turns.len(), 2);
     assert_eq!(conv.turns[1].summary, "Tests écrits.");
 }
+
+/// Le build passe mais un test échoue : la boucle lance les tests, montre au
+/// modèle le test ET le code testé (autre fichier), et corrige le code.
+#[tokio::test]
+async fn failing_rust_test_is_fixed_in_the_tested_code() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("calc");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::create_dir_all(dir.join("tests")).unwrap();
+    std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"calc\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+    std::fs::write(dir.join("src/lib.rs"), "pub mod ops;\n").unwrap();
+    std::fs::write(dir.join("src/ops.rs"), "pub fn add(a: i32, b: i32) -> i32 {\n    a - b\n}\n").unwrap();
+    std::fs::write(dir.join("tests/ops.rs"), "use calc::ops::add;\n\n#[test]\nfn adds() {\n    assert_eq!(add(1, 2), 3);\n}\n").unwrap();
+
+    let (url, requests) = fake_llm("Le bug est dans add.\n\nsrc/ops.rs\n<<<<<<< SEARCH\n    a - b\n=======\n    a + b\n>>>>>>> REPLACE\n").await;
+    let host = Arc::new(Recorder::default());
+    let agent = Agent::new(Project::open(&dir).unwrap(), local_config(url), host.clone());
+    let out = agent.fix().await.unwrap();
+
+    assert!(out.ok && out.tests == Some(true), "{:?}", out.remaining);
+    assert_eq!(out.summary(), "build et tests OK");
+    assert!(std::fs::read_to_string(dir.join("src/ops.rs")).unwrap().contains("a + b"));
+    let req = requests.lock().unwrap()[0].clone();
+    assert!(req.contains("Tests en échec"), "{req}");
+    assert!(req.contains("tests/ops.rs:5"), "l'échec pointe le test : {req}");
+    assert!(req.contains("## src/ops.rs (code testé"), "le code testé est fourni : {req}");
+    let events = host.0.lock().unwrap();
+    assert!(events.iter().any(|e| matches!(e, Event::Tests { ok: false, failures: 1, .. })));
+    assert!(events.iter().any(|e| matches!(e, Event::Tests { ok: true, .. })));
+}
+
+#[tokio::test]
+async fn failing_pytest_is_fixed() {
+    let has_pytest = std::process::Command::new("python3").args(["-m", "pytest", "--version"]).output().is_ok_and(|o| o.status.success());
+    if !has_pytest {
+        eprintln!("pytest absent : test ignoré");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("py");
+    std::fs::create_dir_all(dir.join("src/calc")).unwrap();
+    std::fs::create_dir_all(dir.join("tests")).unwrap();
+    std::fs::write(dir.join("pyproject.toml"), "[project]\nname = \"calc\"\nversion = \"0.1.0\"\n\n[tool.pytest.ini_options]\npythonpath = [\"src\"]\n").unwrap();
+    std::fs::write(dir.join("src/calc/__init__.py"), "def mean(xs):\n    return sum(xs) / (len(xs) + 1)\n").unwrap();
+    std::fs::write(dir.join("tests/test_calc.py"), "from calc import mean\n\n\ndef test_mean():\n    assert mean([2, 4]) == 3\n").unwrap();
+
+    let (url, requests) = fake_llm("src/calc/__init__.py\n<<<<<<< SEARCH\n    return sum(xs) / (len(xs) + 1)\n=======\n    return sum(xs) / len(xs)\n>>>>>>> REPLACE\n").await;
+    let agent = Agent::new(Project::open(&dir).unwrap(), local_config(url), Arc::new(Recorder::default()));
+    let out = agent.fix().await.unwrap();
+    assert!(out.ok && out.tests == Some(true), "{:?}", out.remaining);
+    let req = requests.lock().unwrap()[0].clone();
+    assert!(req.contains("tests/test_calc.py:5"), "{req}");
+    assert!(req.contains("## src/calc/__init__.py (code testé"), "{req}");
+}

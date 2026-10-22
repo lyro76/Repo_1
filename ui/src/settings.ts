@@ -78,6 +78,7 @@ export async function openSettings(api: Backend, opts: { welcome?: boolean } = {
   const attempts = input({ type: "number", min: "1", max: "10", value: String(cfg.max_attempts) });
   const steps = input({ type: "number", min: "5", max: "200", value: String(cfg.max_steps) });
   const autoFix = check("Compiler et corriger après chaque tâche", cfg.auto_fix);
+  const fixTests = check("Lancer aussi les tests, et corriger ceux qui échouent", cfg.fix_tests);
   const confirmWrites = check("Demander avant chaque écriture de fichier", cfg.confirm_writes);
 
   const save = h("button", { type: "submit", class: "primary" }, welcome ? "Commencer" : "Enregistrer");
@@ -119,6 +120,7 @@ export async function openSettings(api: Backend, opts: { welcome?: boolean } = {
         field("Mode par défaut", mode),
         h("div", { class: "grid2" }, field("Tentatives de correction", attempts), field("Actions max par tâche", steps)),
         autoFix.el,
+        fixTests.el,
         confirmWrites.el,
       ),
       h("div", { class: "dialog-actions" }, h("small", { class: "muted path", title: settings.config_path }, settings.config_path), cancel, save),
@@ -217,6 +219,7 @@ export async function openSettings(api: Backend, opts: { welcome?: boolean } = {
       cfg.max_attempts = Math.max(1, Number(attempts.value) || 3);
       cfg.max_steps = Math.max(5, Number(steps.value) || 40);
       cfg.auto_fix = autoFix.box.checked;
+      cfg.fix_tests = fixTests.box.checked;
       cfg.confirm_writes = confirmWrites.box.checked;
       const newKey = key.value.trim() ? key.value.trim() : deleteKey ? "" : null;
       try {

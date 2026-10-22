@@ -20,7 +20,12 @@ et peut passer à l'API Claude quand le local tourne en rond.
   `fichier(ligne,col)` de tsc/MSBuild, Go ; tracebacks Python ; piles d'appels JS/Java/C#/Ruby/PHP ;
   panics Rust, pytest, go test ; à défaut, tout fichier du projet cité dans la sortie) →
   suggestions sûres du compilateur appliquées sans modèle → sinon correctif du modèle → rebuild.
-  3 tentatives, puis escalade vers l'API en mode Auto.
+  Quand le build passe, les **tests** sont lancés et leurs échecs corrigés de la même façon
+  (le modèle reçoit le test et le code testé). 3 tentatives, puis escalade vers l'API en mode Auto.
+- **Mémoire de conversation** : chaque échange est résumé et redonné au modèle à la demande
+  suivante ; la conversation est enregistrée par projet (Nouvelle / Historique).
+- **Réglages et premier lancement** : détection de la carte graphique, modèle conseillé,
+  téléchargement via Ollama, clé API enregistrable.
 - **Annuler ce correctif** : chaque modification est précédée d'un instantané.
 - **Autorisations** : les commandes de build/lecture passent seules ; `cargo add`, `pip install`…
   demandent ton accord (avec « toujours pour ce projet ») ; `rm -rf`, `git push`, `sudo`… demandent toujours.

@@ -29,6 +29,7 @@ export type AgentEvent =
   | { type: "diagnostics"; items: Diagnostic[] }
   | { type: "patch"; snapshot: string; file: string; diff: string; attempt: number; backend: string }
   | { type: "build"; ok: boolean; errors: number; seconds: number }
+  | { type: "tests"; ok: boolean; failures: number; seconds: number }
   | { type: "escalated"; reason: string }
   | { type: "done"; ok: boolean; summary: string }
   | { type: "usage"; backend: string; calls: number };
@@ -49,6 +50,7 @@ export interface Config {
   max_attempts: number;
   max_steps: number;
   auto_fix: boolean;
+  fix_tests: boolean;
   confirm_writes: boolean;
   build_cmd: string | null;
   test_cmd: string | null;

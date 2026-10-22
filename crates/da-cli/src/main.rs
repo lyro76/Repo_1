@@ -90,7 +90,7 @@ impl Host for CliHost {
             }
             Event::Escalated { reason } => eprintln!("\x1b[33m  ↑ escalade vers l'API : {reason}\x1b[0m"),
             Event::Done { ok, summary } => eprintln!("\n{} {summary}", if ok { "✓" } else { "✗" }),
-            Event::Build { .. } | Event::Diagnostics { .. } | Event::Usage { .. } => {}
+            Event::Build { .. } | Event::Tests { .. } | Event::Diagnostics { .. } | Event::Usage { .. } => {}
         }
     }
 

@@ -20,6 +20,8 @@ pub enum Event {
     Patch { snapshot: String, file: String, diff: String, attempt: u32, backend: String },
     /// Résultat d'un build.
     Build { ok: bool, errors: usize, seconds: f32 },
+    /// Résultat des tests (lancés quand le build passe).
+    Tests { ok: bool, failures: usize, seconds: f32 },
     /// La boucle de correction passe à l'API.
     Escalated { reason: String },
     /// Fin de tâche.

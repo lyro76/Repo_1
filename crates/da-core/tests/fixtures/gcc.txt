@@ -1,0 +1,9 @@
+a.cpp: In function 'int main()':
+a.cpp:1:21: error: invalid conversion from 'const char*' to 'int' [-fpermissive]
+    1 | int main(){ int x = "a"; return y; }
+      |                     ^~~
+      |                     |
+      |                     const char*
+a.cpp:1:33: error: 'y' was not declared in this scope
+    1 | int main(){ int x = "a"; return y; }
+      |                                 ^

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/mark.png" />
+    <link rel="stylesheet" href="/src/style.css" />
+    <title>Digital Arms</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><img src="/mark.png" alt="" /><span>Digital <b>Arms</b></span></div>
+        <nav id="tabs" class="tabs"></nav>
+        <button id="add-tab" class="icon-btn" title="Ouvrir ou créer un projet">+</button>
+        <div class="spacer"></div>
+        <div id="mode" class="segmented" role="radiogroup" aria-label="Modèle">
+          <button data-mode="local">Local</button><button data-mode="api">API</button><button data-mode="auto">Auto</button>
+        </div>
+      </header>
+
+      <aside class="sidebar">
+        <h3>Fichiers</h3>
+        <div id="tree" class="tree"></div>
+        <section class="notes">
+          <h3>Notes du projet</h3>
+          <div id="notes"></div>
+        </section>
+      </aside>
+
+      <main class="conversation">
+        <div class="pane-head">
+          <b>Conversation</b><span id="conv-project" class="muted"></span>
+          <div class="spacer"></div>
+          <span id="agent-badge" class="badge"></span>
+        </div>
+        <div id="feed" class="feed"></div>
+        <form id="composer" class="composer">
+          <textarea id="prompt" rows="2" placeholder="Décris ce que tu veux faire…  (Ctrl+Entrée pour envoyer, /fix pour corriger le build)"></textarea>
+          <div class="composer-bar">
+            <button type="button" class="chip" id="opt-autofix" aria-pressed="true">Auto-correction</button>
+            <button type="button" class="chip" id="opt-confirm" aria-pressed="false">Demander avant d'écrire</button>
+            <span id="model-label" class="mono muted"></span>
+            <div class="spacer"></div>
+            <button type="button" id="stop" class="ghost-btn" hidden>Arrêter</button>
+            <button type="submit" id="send" class="send" title="Envoyer">↑</button>
+          </div>
+        </form>
+      </main>
+
+      <section class="right">
+        <div class="correction">
+          <div class="pane-head"><b>Correction au lancement</b><div class="spacer"></div><span id="attempt" class="pill mono"></span></div>
+          <div id="correction" class="correction-body"></div>
+        </div>
+        <div class="terminal">
+          <div class="pane-head"><b>Terminal</b><span id="term-cmd" class="pill mono"></span><div class="spacer"></div><button id="term-clear" class="icon-btn" title="Effacer">⌫</button></div>
+          <div id="term" class="term mono"></div>
+          <form id="term-form" class="term-input mono"><span id="term-prompt"></span><input id="term-line" autocomplete="off" spellcheck="false" /></form>
+        </div>
+      </section>
+
+      <footer id="status" class="statusbar mono"></footer>
+    </div>
+
+    <dialog id="new-dialog">
+      <form method="dialog" id="new-form">
+        <h2>Projet</h2>
+        <button type="button" id="open-existing" class="wide">Ouvrir un dossier existant…</button>
+        <p class="muted">ou créer un squelette (sans modèle, déterministe) :</p>
+        <label>Nom <input id="new-name" required pattern="[A-Za-z0-9_\-]+" placeholder="mon-projet" /></label>
+        <label>Langage
+          <select id="new-lang"><option value="rust">Rust (cargo)</option><option value="cpp">C++ (CMake)</option><option value="python">Python (pytest)</option></select>
+        </label>
+        <label>Dans <span class="row"><input id="new-parent" placeholder="~/projets" /><button type="button" id="pick-parent">…</button></span></label>
+        <div class="dialog-actions"><button value="cancel" formnovalidate>Annuler</button><button value="create" class="primary">Créer</button></div>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

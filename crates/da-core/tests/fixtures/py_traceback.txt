@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "t.py", line 4, in <module>
+    f()
+    ~^^
+  File "t.py", line 2, in f
+    return bar
+           ^^^
+NameError: name 'bar' is not defined

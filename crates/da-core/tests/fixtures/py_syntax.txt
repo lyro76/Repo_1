@@ -1,0 +1,4 @@
+  File "s.py", line 1
+    def f(:
+          ^
+SyntaxError: invalid syntax

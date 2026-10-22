@@ -182,7 +182,7 @@ impl Conversation {
                 Some(ConversationInfo { id, title: c.title(), started: c.started, turns: c.turns.len() })
             })
             .collect();
-        out.sort_by(|a, b| b.started.cmp(&a.started));
+        out.sort_by_key(|c| std::cmp::Reverse(c.started));
         out
     }
 

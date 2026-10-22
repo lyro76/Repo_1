@@ -83,6 +83,7 @@ pub struct Toolbox<'a> {
     pub perms: Mutex<Permissions>,
     pub snapshot: Mutex<Snapshot>,
     pub approval_ids: &'a std::sync::atomic::AtomicU64,
+    pub build_cmd: Option<String>,
 }
 
 /// Résultat d'un outil : texte pour le modèle, résumé court pour l'interface.
@@ -180,7 +181,9 @@ impl<'a> Toolbox<'a> {
                 Ok((format!("[{status}]\n{}", tail(&out.output)), format!("{status} · {:.1} s", out.seconds)))
             }
             "build" => {
-                let cmd = self.project.build_command(self.cfg).ok_or_else(|| anyhow!("pas de commande de build connue ; ajoute build_cmd dans .digital-arms/config.toml"))?;
+                let cmd = self.build_cmd.clone().ok_or_else(|| {
+                    anyhow!("pas encore de commande de build pour ce projet. Si tu connais la commande standard du langage, lance-la avec run_command ; elle sera proposée à l'utilisateur à la fin de la tâche.")
+                })?;
                 let out = self.project.run(&cmd, self.host, Duration::from_secs(600)).await?;
                 let diags = crate::diag::parse(&out.output);
                 let errs = crate::diag::errors(&diags);

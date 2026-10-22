@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -123,24 +123,45 @@ impl Config {
     pub const DIR: &'static str = ".digital-arms";
     pub const FILE: &'static str = "config.toml";
 
-    /// Lit `~/.config/digital-arms/config.toml` puis `<projet>/.digital-arms/config.toml`
-    /// (le second l'emporte, clé par clé au niveau racine).
+    /// `%APPDATA%\digital-arms` sous Windows, `~/.config/digital-arms` sous Linux,
+    /// `~/Library/Application Support/digital-arms` sous macOS.
+    pub fn global_dir() -> Option<PathBuf> {
+        dirs::config_dir().map(|d| d.join("digital-arms"))
+    }
+
+    pub fn global_path() -> Option<PathBuf> {
+        Self::global_dir().map(|d| d.join(Self::FILE))
+    }
+
+    /// Vrai tant que l'assistant de premier lancement n'a pas été terminé.
+    pub fn first_run() -> bool {
+        Self::global_path().is_none_or(|p| !p.exists())
+    }
+
+    /// Réglages globaux seuls (ceux de l'écran Réglages).
+    pub fn load_global() -> Result<Self> {
+        let mut merged = toml::Table::new();
+        if let Some(p) = Self::global_path() {
+            merge_file(&mut merged, &p)?;
+        }
+        Ok(toml::Value::Table(merged).try_into()?)
+    }
+
+    pub fn save_global(&self) -> Result<()> {
+        let path = Self::global_path().ok_or_else(|| anyhow::anyhow!("dossier de configuration introuvable"))?;
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        std::fs::write(path, toml::to_string_pretty(self)?)?;
+        Ok(())
+    }
+
+    /// Réglages globaux puis `<projet>/.digital-arms/config.toml` (le second
+    /// l'emporte, clé par clé au niveau racine).
     pub fn load(project_root: &Path) -> Result<Self> {
         let mut merged = toml::Table::new();
-        let mut candidates = Vec::new();
-        if let Some(home) = std::env::var_os("HOME") {
-            candidates.push(Path::new(&home).join(".config/digital-arms/config.toml"));
+        if let Some(p) = Self::global_path() {
+            merge_file(&mut merged, &p)?;
         }
-        candidates.push(project_root.join(Self::DIR).join(Self::FILE));
-        for path in candidates {
-            if let Ok(text) = std::fs::read_to_string(&path) {
-                let table: toml::Table =
-                    toml::from_str(&text).with_context(|| format!("config invalide : {}", path.display()))?;
-                for (k, v) in table {
-                    merged.insert(k, v);
-                }
-            }
-        }
+        merge_file(&mut merged, &project_root.join(Self::DIR).join(Self::FILE))?;
         Ok(toml::Value::Table(merged).try_into()?)
     }
 
@@ -151,7 +172,72 @@ impl Config {
         Ok(())
     }
 
-    pub fn api_key() -> Option<String> {
-        std::env::var("ANTHROPIC_API_KEY").ok().filter(|k| !k.is_empty())
+    /// Écrit `build_cmd`/`test_cmd` dans la config du projet sans toucher au reste.
+    pub fn save_project_commands(project_root: &Path, build: Option<&str>, test: Option<&str>) -> Result<()> {
+        let path = project_root.join(Self::DIR).join(Self::FILE);
+        let mut table: toml::Table = std::fs::read_to_string(&path).ok().and_then(|t| toml::from_str(&t).ok()).unwrap_or_default();
+        for (k, v) in [("build_cmd", build), ("test_cmd", test)] {
+            if let Some(v) = v {
+                table.insert(k.into(), toml::Value::String(v.into()));
+            }
+        }
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        std::fs::write(path, toml::to_string_pretty(&table)?)?;
+        Ok(())
     }
+
+    /// Clé API : variable `ANTHROPIC_API_KEY`, sinon celle enregistrée dans les réglages.
+    pub fn api_key() -> Option<String> {
+        Self::api_key_source().map(|(k, _)| k)
+    }
+
+    pub fn api_key_source() -> Option<(String, KeySource)> {
+        if let Some(k) = std::env::var("ANTHROPIC_API_KEY").ok().filter(|k| !k.trim().is_empty()) {
+            return Some((k, KeySource::Env));
+        }
+        let text = std::fs::read_to_string(Self::global_dir()?.join(SECRETS)).ok()?;
+        let table: toml::Table = toml::from_str(&text).ok()?;
+        let k = table.get("anthropic_api_key")?.as_str()?.trim().to_string();
+        (!k.is_empty()).then_some((k, KeySource::Settings))
+    }
+
+    /// Enregistre (ou efface avec `None`) la clé dans un fichier séparé de la
+    /// config, lisible par l'utilisateur seul sous Unix.
+    pub fn set_api_key(key: Option<&str>) -> Result<()> {
+        let dir = Self::global_dir().ok_or_else(|| anyhow::anyhow!("dossier de configuration introuvable"))?;
+        let path = dir.join(SECRETS);
+        match key.map(str::trim).filter(|k| !k.is_empty()) {
+            None => {
+                let _ = std::fs::remove_file(path);
+            }
+            Some(k) => {
+                std::fs::create_dir_all(&dir)?;
+                let mut t = toml::Table::new();
+                t.insert("anthropic_api_key".into(), toml::Value::String(k.into()));
+                std::fs::write(&path, toml::to_string(&t)?)?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+const SECRETS: &str = "secrets.toml";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum KeySource {
+    Env,
+    Settings,
+}
+
+fn merge_file(into: &mut toml::Table, path: &Path) -> Result<()> {
+    let Ok(text) = std::fs::read_to_string(path) else { return Ok(()) };
+    let table: toml::Table = toml::from_str(&text).with_context(|| format!("config invalide : {}", path.display()))?;
+    into.extend(table);
+    Ok(())
 }

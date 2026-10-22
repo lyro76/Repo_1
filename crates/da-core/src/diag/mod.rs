@@ -1,13 +1,18 @@
-//! Lecture des erreurs de compilation.
+//! Lecture des erreurs de compilation, d'exécution et de tests, pour
+//! n'importe quel langage.
 //!
 //! On ne fait pas de regex fragile quand le compilateur sait parler JSON :
 //! cargo (`--message-format=json`) et gcc (`-fdiagnostics-format=json`) sont
-//! lus tels quels. Le texte classique `fichier:ligne:col: error: …` (gcc,
-//! clang, mypy, ruff…) et les tracebacks Python ont leur propre lecteur.
+//! lus tels quels. Ensuite viennent les formats texte répandus
+//! (`fichier:ligne:col: error:`, `fichier(ligne,col): error`, Go…), les
+//! tracebacks Python et les piles d'appels (JS, JVM, .NET, Ruby, PHP, panics
+//! Rust). Ce qui reste illisible est rattrapé par [`mentions`] : tout chemin
+//! de fichier du projet cité dans la sortie.
 
 mod cargo;
 mod gcc;
 mod python;
+mod stack;
 mod text;
 
 use serde::{Deserialize, Serialize};
@@ -59,24 +64,34 @@ impl Diagnostic {
     }
 }
 
-/// Essaie chaque format reconnu et renvoie les diagnostics dédoublonnés.
+/// Essaie tous les formats reconnus (une sortie de build mélange souvent
+/// plusieurs outils) et renvoie les diagnostics dédoublonnés.
 pub fn parse(output: &str) -> Vec<Diagnostic> {
-    let mut found = cargo::parse(output);
-    if found.is_empty() {
-        found = gcc::parse(output);
-    }
-    if found.is_empty() {
-        found = python::parse(output);
-    }
-    // Le texte classique complète toujours : un build CMake mélange des
-    // sorties de plusieurs outils.
-    for d in text::parse(output) {
+    let mut found: Vec<Diagnostic> = Vec::new();
+    let all = [cargo::parse(output), gcc::parse(output), python::parse(output), stack::parse(output), text::parse(output)];
+    for d in all.into_iter().flatten() {
         if !found.iter().any(|f| f.file == d.file && f.line == d.line && f.message == d.message) {
             found.push(d);
         }
     }
-    found.dedup_by(|a, b| a.file == b.file && a.line == b.line && a.message == b.message);
     found
+}
+
+/// Chemins `fichier:ligne` (ou `fichier(ligne` / `fichier on line N`) cités
+/// dans une sortie, quel que soit l'outil. Sert de filet quand aucun format
+/// n'est reconnu : on sait au moins quels fichiers montrer au modèle.
+pub fn mentions(output: &str) -> Vec<(String, u32)> {
+    static RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r#"(?P<file>(?:[A-Za-z]:)?[\w./\\-]*[\w-]\.[A-Za-z][A-Za-z0-9]{0,5})(?::| on line |\(|", line )(?P<line>\d+)"#).unwrap()
+    });
+    let mut out: Vec<(String, u32)> = Vec::new();
+    for c in RE.captures_iter(output) {
+        let item = (c["file"].to_string(), c["line"].parse().unwrap_or(0));
+        if !out.contains(&item) {
+            out.push(item);
+        }
+    }
+    out
 }
 
 pub fn errors(diags: &[Diagnostic]) -> Vec<&Diagnostic> {

@@ -10,7 +10,7 @@ use std::time::Duration;
 use da_core::events::ApprovalRequest;
 use da_core::llm::OpenAiCompat;
 use da_core::memory::Notes;
-use da_core::project::{scaffold, Lang};
+use da_core::project::scaffold;
 use da_core::{Agent, Config, Decision, Event, Host, Mode, Project};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
@@ -60,24 +60,32 @@ struct ProjectInfo {
     tab: String,
     name: String,
     root: String,
-    lang: Lang,
+    /// Identifiant, nom et étiquette du langage détecté (aucune liste fermée).
+    lang: String,
+    lang_name: String,
+    lang_label: String,
     files: Vec<String>,
     notes: String,
     config: Config,
     build: Option<String>,
+    test: Option<String>,
 }
 
 fn info(tab: &str, root: &PathBuf) -> Result<ProjectInfo, String> {
     let project = Project::open(root).map_err(err)?;
     let config = Config::load(&project.root).map_err(err)?;
+    let kind = project.kind();
     Ok(ProjectInfo {
         tab: tab.to_string(),
         name: project.name(),
         root: project.root.display().to_string(),
-        lang: project.lang,
+        lang: kind.id,
+        lang_name: kind.name,
+        lang_label: kind.label,
         files: da_core::index::walk(&project.root).iter().map(|p| da_core::index::rel(p)).collect(),
         notes: Notes::new(&project.root).read(),
         build: project.build_command(&config),
+        test: project.test_command(&config),
         config,
     })
 }
@@ -115,16 +123,18 @@ fn open_project(state: State<AppState>, path: String) -> Result<ProjectInfo, Str
     info(&tab, &root)
 }
 
+#[derive(Serialize)]
+struct NewProject {
+    info: ProjectInfo,
+    /// Demande à lancer tout de suite : l'agent écrit le squelette.
+    bootstrap: Option<String>,
+}
+
 #[tauri::command]
-fn new_project(state: State<AppState>, parent: String, name: String, lang: String) -> Result<ProjectInfo, String> {
-    let lang = match lang.as_str() {
-        "rust" => Lang::Rust,
-        "cpp" => Lang::Cpp,
-        "python" => Lang::Python,
-        other => return Err(format!("langage inconnu : {other}")),
-    };
-    let dir = scaffold(&PathBuf::from(parent), &name, lang).map_err(err)?;
-    open_project(state, dir.display().to_string())
+fn new_project(state: State<AppState>, parent: String, name: String, lang: String) -> Result<NewProject, String> {
+    let s = scaffold(&PathBuf::from(parent), &name, &lang).map_err(err)?;
+    let info = open_project(state, s.dir.display().to_string())?;
+    Ok(NewProject { info, bootstrap: s.bootstrap })
 }
 
 #[tauri::command]

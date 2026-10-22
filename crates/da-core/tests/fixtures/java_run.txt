@@ -1,0 +1,2 @@
+Exception in thread "main" java.lang.NullPointerException: Cannot invoke "String.length()" because "<local1>" is null
+	at Boom.main(Boom.java:4)

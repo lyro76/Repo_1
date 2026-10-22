@@ -59,13 +59,21 @@ pub struct Agent {
     local: Backend,
     api: Option<Backend>,
     calls: Mutex<HashMap<&'static str, u32>>,
+    /// Commandes proposées par le modèle et acceptées pendant cette session.
+    inferred: Mutex<Option<Commands>>,
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct Commands {
+    build: Option<String>,
+    test: Option<String>,
 }
 
 impl Agent {
     pub fn new(project: Project, cfg: Config, host: Arc<dyn Host>) -> Self {
         let local = Backend::local(&cfg);
         let api = Backend::api(&cfg);
-        Self { project, cfg, host, local, api, calls: Mutex::default() }
+        Self { project, cfg, host, local, api, calls: Mutex::default(), inferred: Mutex::default() }
     }
 
     pub fn open(root: &Path, host: Arc<dyn Host>) -> Result<Self> {
@@ -126,10 +134,10 @@ impl Agent {
         let notes = Notes::new(&self.project.root).read();
         let files: Vec<String> = crate::index::walk(&self.project.root).iter().take(200).map(|p| crate::index::rel(p)).collect();
         format!(
-            "## Projet\nNom : {}\nLangage : {:?}\nBuild : {}\n\n## NOTES.md\n{}\n\n## Fichiers\n{}",
+            "## Projet\nNom : {}\nLangage : {}\nBuild : {}\n\n## NOTES.md\n{}\n\n## Fichiers\n{}",
             self.project.name(),
-            self.project.lang,
-            self.project.build_command(&self.cfg).unwrap_or_else(|| "(inconnu)".into()),
+            self.project.kind().name,
+            self.build_cmd().unwrap_or_else(|| "(pas encore connue)".into()),
             if notes.trim().is_empty() { "(vide)" } else { notes.trim() },
             files.join("\n")
         )
@@ -217,7 +225,7 @@ impl Agent {
         if !finished {
             self.emit(Event::Text { text: format!("Arrêt après {} actions. Relance la tâche pour continuer.", self.cfg.max_steps) });
         }
-        if self.cfg.auto_fix && self.project.build_command(&self.cfg).is_some() {
+        if self.cfg.auto_fix && self.ensure_build_cmd().await.is_some() {
             let out = self.fix().await?;
             self.emit(Event::Done { ok: out.ok, summary: if out.ok { "build OK".into() } else { format!("{} erreur(s) restantes", out.remaining.len()) } });
         } else {
@@ -234,6 +242,7 @@ impl Agent {
             perms: Mutex::new(Permissions::load(&self.project.root)),
             snapshot: Mutex::new(Snapshot::new(new_id())),
             approval_ids: &APPROVALS,
+            build_cmd: self.build_cmd(),
         }
     }
 
@@ -244,27 +253,115 @@ impl Agent {
         }
     }
 
+    pub fn build_cmd(&self) -> Option<String> {
+        self.project.build_command(&self.cfg).or_else(|| self.inferred.lock().unwrap().as_ref()?.build.clone())
+    }
+
+    pub fn test_cmd(&self) -> Option<String> {
+        self.project.test_command(&self.cfg).or_else(|| self.inferred.lock().unwrap().as_ref()?.test.clone())
+    }
+
+    /// Commande de build connue, ou proposée par le modèle et acceptée par
+    /// l'utilisateur (puis enregistrée dans la config du projet). C'est ce
+    /// qui rend l'agent utilisable avec n'importe quel langage.
+    pub async fn ensure_build_cmd(&self) -> Option<String> {
+        if let Some(c) = self.build_cmd() {
+            return Some(c);
+        }
+        let id = self.step("recherche des commandes de build");
+        let proposed = match self.infer_commands().await {
+            Ok(c) if c.build.is_some() => c,
+            Ok(_) => {
+                self.end(id, "aucune", false);
+                return None;
+            }
+            Err(e) => {
+                self.end(id, format!("échec : {e:#}"), false);
+                return None;
+            }
+        };
+        self.end(id, "proposées", true);
+        let detail = format!(
+            "build : {}\ntest  : {}",
+            proposed.build.as_deref().unwrap_or("—"),
+            proposed.test.as_deref().unwrap_or("—")
+        );
+        let request = crate::events::ApprovalRequest {
+            id: APPROVALS.fetch_add(1, Ordering::Relaxed),
+            title: "Utiliser ces commandes pour ce projet ?".into(),
+            detail,
+            rule: String::new(),
+        };
+        match self.host.approve(request).await {
+            Ok(crate::events::Decision::Allow | crate::events::Decision::AlwaysAllow) => {
+                let _ = Config::save_project_commands(&self.project.root, proposed.build.as_deref(), proposed.test.as_deref());
+                let build = proposed.build.clone();
+                *self.inferred.lock().unwrap() = Some(proposed);
+                build
+            }
+            _ => {
+                self.emit(Event::Text { text: "Sans commande de build, je ne peux pas vérifier le code. Tu peux la définir dans les réglages du projet.".into() });
+                None
+            }
+        }
+    }
+
+    async fn infer_commands(&self) -> Result<Commands> {
+        const SYSTEM: &str = "Tu identifies les commandes d'un projet logiciel. Réponds UNIQUEMENT avec un objet JSON \
+            {\"build\": \"…\", \"test\": \"…\"}. `build` compile le projet, ou le vérifie sans l'exécuter si le langage \
+            n'est pas compilé (analyse statique, vérification de syntaxe), et affiche les erreurs avec fichier et ligne. \
+            `test` lance les tests. Mets null quand rien de raisonnable n'existe. Commandes non interactives, lancées \
+            depuis la racine du projet.";
+        let root = &self.project.root;
+        let mut prompt = format!("Système : {}\n\n{}", std::env::consts::OS, self.context());
+        // Les petits fichiers à la racine sont presque toujours des manifestes.
+        let mut shown = 0;
+        for f in crate::index::walk(root).iter().filter(|p| p.components().count() == 1) {
+            let Ok(text) = std::fs::read_to_string(root.join(f)) else { continue };
+            if text.len() > 3000 || f.to_string_lossy() == "NOTES.md" {
+                continue;
+            }
+            prompt.push_str(&format!("\n\n## {}\n```\n{}\n```", crate::index::rel(f), text.trim()));
+            shown += 1;
+            if shown == 6 {
+                break;
+            }
+        }
+        let backend = self.escalation().unwrap_or(self.primary()?);
+        let reply = self.chat(backend, SYSTEM, &[Msg::User(prompt)], &[]).await?;
+        let start = reply.text.find('{').ok_or_else(|| anyhow::anyhow!("réponse sans JSON"))?;
+        let end = reply.text.rfind('}').ok_or_else(|| anyhow::anyhow!("réponse sans JSON"))?;
+        let mut c: Commands = serde_json::from_str(&reply.text[start..=end])?;
+        let clean = |s: Option<String>| s.map(|x| x.trim().to_string()).filter(|x| !x.is_empty() && x != "null");
+        c.build = clean(c.build);
+        c.test = clean(c.test);
+        Ok(c)
+    }
+
     async fn build(&self) -> Result<(bool, Vec<Diagnostic>)> {
-        let Some(cmd) = self.project.build_command(&self.cfg) else { bail!("pas de commande de build connue") };
+        let Some(cmd) = self.build_cmd() else { bail!("pas de commande de build connue") };
         let id = self.step(short_cmd(&cmd));
         let out = self.project.run(&cmd, self.host.as_ref(), Duration::from_secs(600)).await?;
-        let diags = diag::parse(&out.output);
-        let errs = diag::errors(&diags).len();
-        let ok = out.ok && errs == 0;
-        let errs_shown = if ok { 0 } else { errs.max(1) };
+        // Le code de sortie fait foi : un format reconnu à tort dans une
+        // sortie réussie ne doit pas inventer d'erreur.
+        let ok = out.ok;
+        let mut diags = if ok { Vec::new() } else { diag::parse(&out.output) };
+        normalize_paths(&mut diags, &self.project.root);
+        diags.retain(|d| d.is_error());
+        if !ok && diags.is_empty() {
+            diags = fallback_diags(&out.output, &self.project.root);
+        }
+        let errs_shown = diags.len();
         self.end(id, if ok { format!("OK · {:.1} s", out.seconds).replace('.', ",") } else { plural(errs_shown, "erreur") }, ok);
         self.emit(Event::Build { ok, errors: errs_shown, seconds: out.seconds });
-        if !ok && errs == 0 {
-            // Échec sans diagnostic reconnu : on fabrique une erreur avec la fin de la sortie.
-            let tail: Vec<&str> = out.output.lines().rev().take(25).collect();
-            let message = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
-            return Ok((false, vec![Diagnostic { file: String::new(), line: 0, column: 0, level: diag::Level::Error, code: None, message, notes: vec![], suggestions: vec![] }]));
-        }
         Ok((ok, diags))
     }
 
     /// Compile et corrige jusqu'à ce que ça passe ou que les tentatives soient épuisées.
     pub async fn fix(&self) -> Result<FixOutcome> {
+        if self.ensure_build_cmd().await.is_none() {
+            bail!("aucune commande de build pour ce projet : définis-la dans les réglages du projet (build_cmd)");
+        }
         let root = self.project.root.clone();
         let memory = FixMemory::new(&root);
         let max = self.cfg.max_attempts;
@@ -479,6 +576,56 @@ impl Agent {
     pub fn undo(&self, snapshot: &str) -> Result<Vec<String>> {
         Snapshot::restore(&self.project.root, snapshot)
     }
+}
+
+/// Chemins des diagnostics rendus relatifs à la racine du projet ; un nom de
+/// fichier seul (javac, piles JVM) est retrouvé dans l'arborescence.
+fn normalize_paths(diags: &mut [Diagnostic], root: &Path) {
+    let mut files: Option<Vec<String>> = None;
+    for d in diags.iter_mut().filter(|d| !d.file.is_empty()) {
+        if let Some(rel) = resolve(&d.file, root, &mut files) {
+            d.file = rel;
+        }
+    }
+}
+
+fn resolve(file: &str, root: &Path, cache: &mut Option<Vec<String>>) -> Option<String> {
+    let clean = file.trim_start_matches("./").replace('\\', "/");
+    let p = Path::new(&clean);
+    if p.is_absolute() {
+        return p.strip_prefix(root).ok().map(crate::index::rel);
+    }
+    if root.join(p).is_file() {
+        return Some(clean);
+    }
+    let files = cache.get_or_insert_with(|| crate::index::walk(root).iter().map(|p| crate::index::rel(p)).collect());
+    let suffix = format!("/{clean}");
+    let hits: Vec<&String> = files.iter().filter(|f| f.ends_with(&suffix)).collect();
+    (hits.len() == 1).then(|| hits[0].clone())
+}
+
+/// Sortie d'échec dans un format inconnu : la fin de la sortie comme message,
+/// rattachée aux fichiers du projet qu'elle cite.
+fn fallback_diags(output: &str, root: &Path) -> Vec<Diagnostic> {
+    let tail: Vec<&str> = output.lines().rev().take(30).collect();
+    let message = tail.into_iter().rev().collect::<Vec<_>>().join("\n");
+    let mut cache = None;
+    let mut out: Vec<Diagnostic> = Vec::new();
+    for (file, line) in diag::mentions(output) {
+        let Some(rel) = resolve(&file, root, &mut cache) else { continue };
+        if out.iter().any(|d| d.file == rel) {
+            continue;
+        }
+        let message = if out.is_empty() { message.clone() } else { "(fichier cité dans la sortie)".into() };
+        out.push(Diagnostic { file: rel, line, column: 1, level: diag::Level::Error, code: None, message, notes: vec![], suggestions: vec![] });
+        if out.len() == 3 {
+            break;
+        }
+    }
+    if out.is_empty() {
+        out.push(Diagnostic { file: String::new(), line: 0, column: 0, level: diag::Level::Error, code: None, message, notes: vec![], suggestions: vec![] });
+    }
+    out
 }
 
 fn backend_name(b: &Backend) -> &'static str {

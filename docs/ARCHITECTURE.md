@@ -11,6 +11,17 @@ ui (TS) ──invoke/events──> src-tauri ──Host──> da-core::Agent �
                                                     └── memory    NOTES.md, fixes.jsonl
 ```
 
+## Langages
+
+Aucune liste fermée. `project::detect` reconnaît les manifestes courants (Cargo, go.mod,
+package.json, *.csproj, pom.xml, build.gradle, Package.swift, build.zig, pubspec.yaml, mix.exs,
+stack.yaml, dune-project, CMakeLists.txt, meson.build, pyproject.toml, Gemfile, composer.json,
+Makefile…) et en déduit les commandes. Sinon le langage dominant est pris par extension, et
+`Agent::ensure_build_cmd` demande au modèle les commandes de build/test ; l'utilisateur valide
+et elles sont écrites dans `.digital-arms/config.toml`. Les erreurs sont lues par des formats
+génériques (voir `diag/`), avec en dernier recours les fichiers du projet cités dans la sortie.
+L'index utilise tree-sitter pour Rust, C/C++ et Python, et des motifs génériques ailleurs.
+
 ## Deux boucles
 
 **Tâche** (`Agent::task`) : boucle d'outils classique (lire, chercher, éditer, compiler, noter),
@@ -38,7 +49,8 @@ même action, on passe à l'API.
 
 ## Mémoire (3 couches)
 
-1. **Index structurel** (v1) : `ignore` + tree-sitter (Rust, C/C++, Python) + regex. Reconstruit à la demande.
+1. **Index structurel** (v1) : `ignore` + tree-sitter (Rust, C/C++, Python) + motifs génériques pour les
+   autres langages + regex. Reconstruit à la demande.
 2. **NOTES.md** (v1) : lu à chaque tâche, enrichi par l'outil `note`.
 3. **Épisodique** : `fixes.jsonl` erreur → diff. v1 : similarité lexicale (code d'erreur + mots).
    v2 : embeddings locaux (nomic-embed-code / bge) dans `sqlite-vec`, recherche hybride BM25 + vecteurs,

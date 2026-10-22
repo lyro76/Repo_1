@@ -1,7 +1,6 @@
 // Miroir des types sérialisés par da-core (events.rs, diag/mod.rs, config.rs).
 
 export type Mode = "local" | "api" | "auto";
-export type Lang = "rust" | "cpp" | "python" | "unknown";
 
 export interface Suggestion {
   message: string;
@@ -59,11 +58,21 @@ export interface ProjectInfo {
   tab: string;
   name: string;
   root: string;
-  lang: Lang;
+  /** Langage détecté : identifiant, nom lisible, étiquette d'onglet. Aucune liste fermée. */
+  lang: string;
+  lang_name: string;
+  lang_label: string;
   files: string[];
   notes: string;
   config: Config;
   build: string | null;
+  test: string | null;
+}
+
+export interface NewProject {
+  info: ProjectInfo;
+  /** Demande à lancer : l'agent écrit le squelette (langages sans modèle intégré). */
+  bootstrap: string | null;
 }
 
 export interface Status {

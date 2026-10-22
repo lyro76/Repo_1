@@ -66,9 +66,14 @@ impl Index {
         let mut parser = Parser::new();
         for path in walk(root) {
             let name = rel(&path);
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if let Some(lang) = language(&path) {
                 if let Ok(src) = std::fs::read_to_string(root.join(&path)) {
                     idx.symbols.extend(symbols_in(&mut parser, lang, &src, &name));
+                }
+            } else if crate::project::is_source_ext(ext) {
+                if let Ok(src) = std::fs::read_to_string(root.join(&path)) {
+                    idx.symbols.extend(generic_symbols(&src, &name));
                 }
             }
             idx.files.push(name);
@@ -151,6 +156,50 @@ fn name_of(node: Node, src: &str) -> Option<String> {
     }
 }
 
+/// Symboles par motifs courants, pour les langages sans grammaire tree-sitter
+/// intégrée (Go, TypeScript, Java, C#, Kotlin, Swift, Zig, Lua, Ruby, PHP…).
+/// Moins précis qu'un vrai parseur, mais suffisant pour « où est défini X ».
+pub fn generic_symbols(src: &str, file: &str) -> Vec<Symbol> {
+    use std::sync::LazyLock;
+    static DECL: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(concat!(
+            r"^\s*(?:(?:export|default|public|private|protected|internal|static|async|abstract|final|sealed|open|override|",
+            r"inline|pub|local|data|partial|virtual|extern|unsafe|readonly|declare)\s+)*",
+            r"(?P<kw>func|function|def|defp|fn|fun|sub|proc|class|struct|interface|trait|enum|type|typealias|module|",
+            r"namespace|object|record|protocol|extension|impl|union)\s+",
+            // Go : `func (r *Recv) Name(` ; le receveur est sauté.
+            r"(?:\([^)]*\)\s*)?(?P<name>[A-Za-z_$][\w$]*(?:[.:][A-Za-z_$][\w$]*)?)"
+        ))
+        .unwrap()
+    });
+    // `const name = (…) =>` / `local function` / `name := func` : fonctions assignées.
+    static ASSIGNED: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r"^\s*(?:export\s+)?(?:const|let|var|local)\s+(?P<name>[A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:function\b|\([^)]*\)\s*(?::[^=]+)?=>|[A-Za-z_$][\w$]*\s*=>)").unwrap()
+    });
+    let mut out = Vec::new();
+    for (i, line) in src.lines().enumerate() {
+        let (kind, name) = if let Some(c) = DECL.captures(line) {
+            let kind = match &c["kw"] {
+                "func" | "function" | "def" | "defp" | "fn" | "fun" | "sub" | "proc" => "fn",
+                "class" | "object" | "record" | "protocol" | "extension" => "class",
+                "struct" | "union" => "struct",
+                "interface" | "trait" => "trait",
+                "enum" => "enum",
+                "type" | "typealias" => "type",
+                "impl" => "impl",
+                _ => "mod",
+            };
+            (kind, c["name"].to_string())
+        } else if let Some(c) = ASSIGNED.captures(line) {
+            ("fn", c["name"].to_string())
+        } else {
+            continue;
+        };
+        out.push(Symbol { name, kind, file: file.to_string(), line: i as u32 + 1 });
+    }
+    out
+}
+
 /// Recherche texte façon ripgrep (regex, insensible à la casse si tout est en minuscules).
 pub fn search(root: &Path, pattern: &str, max: usize) -> Result<Vec<Hit>> {
     let re = RegexBuilder::new(pattern)
@@ -197,6 +246,20 @@ mod tests {
         for want in [("sim", "mod"), ("Body", "struct"), ("step", "fn"), ("Engine::run", "fn")] {
             assert!(s.contains(&(want.0.to_string(), want.1)), "{want:?} absent de {s:?}");
         }
+    }
+
+    #[test]
+    fn generic_symbols_cover_other_languages() {
+        let names = |src: &str| generic_symbols(src, "f").into_iter().map(|s| (s.name, s.kind)).collect::<Vec<_>>();
+        assert_eq!(names("package main\n\nfunc (s *Server) Start() error {\n}\nfunc main() {}\ntype Config struct {"), vec![
+            ("Start".into(), "fn"), ("main".into(), "fn"), ("Config".into(), "type")
+        ]);
+        assert_eq!(names("export async function load(p: string) {}\nexport const parse = (s: string): Ast => {\nexport interface Ast {}\nexport default class App {}"), vec![
+            ("load".into(), "fn"), ("parse".into(), "fn"), ("Ast".into(), "trait"), ("App".into(), "class")
+        ]);
+        assert_eq!(names("public sealed class Engine {\n    public static void Main(string[] a) {}\n}"), vec![("Engine".into(), "class")]);
+        assert_eq!(names("local function update(dt)\nfunction M.draw()\n"), vec![("update".into(), "fn"), ("M.draw".into(), "fn")]);
+        assert_eq!(names("pub fn init(alloc: Allocator) !void {\nconst Point = struct {"), vec![("init".into(), "fn")]);
     }
 
     #[test]

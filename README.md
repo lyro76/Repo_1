@@ -2,7 +2,7 @@
 
 # Digital Arms
 
-Agent de bureau qui **code et corrige** dans tes projets Rust, C++ et Python.
+Agent de bureau qui **code et corrige** dans tes projets, **quel que soit le langage**.
 Il tourne d'abord sur un **modèle open source local** (Ollama, LM Studio, llama.cpp…),
 et peut passer à l'API Claude quand le local tourne en rond.
 
@@ -12,9 +12,15 @@ et peut passer à l'API Claude quand le local tourne en rond.
 
 - **Tâches libres** : « ajoute un timeout configurable au client réseau ». L'agent explore
   (symboles, recherche, lecture), édite, compile.
-- **Correction au lancement** : build → erreurs parsées (JSON natif de cargo/gcc, texte
-  gcc/clang/mypy, tracebacks Python, pytest) → suggestions sûres du compilateur appliquées
-  sans modèle → sinon correctif du modèle → rebuild. 3 tentatives, puis escalade vers l'API en mode Auto.
+- **N'importe quel langage** : l'écosystème est détecté (Cargo, Go, npm/pnpm/yarn/bun, Deno,
+  .NET, Maven, Gradle, sbt, Swift, Zig, Dart/Flutter, Mix, Stack/Cabal, Dune, CMake, Meson,
+  Python, Ruby, PHP, Makefile…). Pour un langage inconnu, le modèle propose la commande de
+  build et de test, tu valides, elle est enregistrée dans le projet.
+- **Correction au lancement** : build → erreurs lues (JSON de cargo/gcc ; formats `fichier:ligne:col`,
+  `fichier(ligne,col)` de tsc/MSBuild, Go ; tracebacks Python ; piles d'appels JS/Java/C#/Ruby/PHP ;
+  panics Rust, pytest, go test ; à défaut, tout fichier du projet cité dans la sortie) →
+  suggestions sûres du compilateur appliquées sans modèle → sinon correctif du modèle → rebuild.
+  3 tentatives, puis escalade vers l'API en mode Auto.
 - **Annuler ce correctif** : chaque modification est précédée d'un instantané.
 - **Autorisations** : les commandes de build/lecture passent seules ; `cargo add`, `pip install`…
   demandent ton accord (avec « toujours pour ce projet ») ; `rm -rf`, `git push`, `sudo`… demandent toujours.
@@ -57,7 +63,8 @@ Sans Tauri, le moteur s'utilise en ligne de commande :
 cargo run -p da-cli -- -C ~/projets/moteur-rust doctor     # vérifie le modèle local et l'API
 cargo run -p da-cli -- -C ~/projets/moteur-rust fix        # compile et corrige
 cargo run -p da-cli -- -C ~/projets/moteur-rust run "ajoute un timeout configurable"
-cargo run -p da-cli -- new rust mon-projet                 # squelette sans modèle
+cargo run -p da-cli -- new go mon-api                      # n'importe quel langage
+cargo run -p da-cli -- new "Zig" mon-jeu                   # hors squelettes intégrés : l'agent l'écrit
 cargo run -p da-cli -- -C . index --find parse_config      # index structurel
 ```
 

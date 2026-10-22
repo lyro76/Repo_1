@@ -26,6 +26,12 @@ const SAFE: &[&str] = &[
     "cmake", "make", "ctest", "ninja", "g++", "gcc", "clang", "clang++",
     "python -m pytest", "python3 -m pytest", "pytest", "uv run", "python -m compileall", "python3 -m compileall",
     "python -m mypy", "ruff", "mypy",
+    "go build", "go vet", "go test", "go run", "gofmt", "npm run build", "npm run lint", "npm test", "npx tsc", "pnpm run build",
+    "pnpm test", "yarn build", "yarn test", "bun run build", "bun test", "deno check", "deno test", "deno lint", "node --check",
+    "dotnet build", "dotnet test", "mvn", "gradle", "./gradlew", "gradlew.bat", "sbt", "swift build", "swift test", "zig build",
+    "dart analyze", "dart test", "flutter analyze", "flutter test", "mix compile", "mix test", "stack build", "stack test",
+    "cabal build", "cabal test", "dune build", "dune test", "meson", "bundle exec rspec", "bundle exec rake test", "rspec",
+    "ruby -c", "php -l", "vendor/bin/phpunit", "luac -p", "javac", "kotlinc", "tsc",
     "ls", "cat", "head", "tail", "wc", "rg", "grep", "find", "tree", "pwd", "echo",
     "git status", "git diff", "git log", "git show", "git branch",
 ];

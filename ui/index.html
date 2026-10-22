@@ -67,11 +67,19 @@
       <form method="dialog" id="new-form">
         <h2>Projet</h2>
         <button type="button" id="open-existing" class="wide">Ouvrir un dossier existant…</button>
-        <p class="muted">ou créer un squelette (sans modèle, déterministe) :</p>
+        <p class="muted">ou créer un nouveau projet, dans n'importe quel langage :</p>
         <label>Nom <input id="new-name" required pattern="[A-Za-z0-9_\-]+" placeholder="mon-projet" /></label>
         <label>Langage
-          <select id="new-lang"><option value="rust">Rust (cargo)</option><option value="cpp">C++ (CMake)</option><option value="python">Python (pytest)</option></select>
+          <input id="new-lang" list="langs" required placeholder="Rust, Go, TypeScript, C#, Zig, Lua…" />
+          <datalist id="langs">
+            <option value="Rust"></option><option value="C++"></option><option value="Python"></option><option value="Go"></option>
+            <option value="TypeScript"></option><option value="JavaScript"></option><option value="C#"></option><option value="Java"></option>
+            <option value="Kotlin"></option><option value="Swift"></option><option value="Zig"></option><option value="C"></option>
+            <option value="Dart"></option><option value="Elixir"></option><option value="Haskell"></option><option value="Ruby"></option>
+            <option value="PHP"></option><option value="Lua"></option><option value="Odin"></option><option value="GDScript"></option>
+          </datalist>
         </label>
+        <p class="muted small">Rust, C++, Python et Go ont un squelette immédiat ; pour les autres, l'agent l'écrit avec les outils du langage.</p>
         <label>Dans <span class="row"><input id="new-parent" placeholder="~/projets" /><button type="button" id="pick-parent">…</button></span></label>
         <div class="dialog-actions"><button value="cancel" formnovalidate>Annuler</button><button value="create" class="primary">Créer</button></div>
       </form>

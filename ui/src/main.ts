@@ -73,8 +73,6 @@ function rich(text: string): DocumentFragment {
 
 // ---------- rendu ----------
 
-const LANG_LABEL = { rust: "rs", cpp: "cpp", python: "py", unknown: "—" } as const;
-
 function renderTabs() {
   const nav = $("tabs");
   nav.replaceChildren(
@@ -82,7 +80,7 @@ function renderTabs() {
       const t = state.tabs.get(id)!;
       const waiting = t.feed.some((f) => f.kind === "approval" && !f.answer);
       const dot = waiting ? "wait" : t.busy ? "busy" : "idle";
-      const b = h("button", { class: `tab${id === state.active ? " active" : ""}`, title: t.info.root }, h("i", { class: `dot ${dot}` }), h("span", {}, t.info.name), h("small", { class: "mono" }, LANG_LABEL[t.info.lang]));
+      const b = h("button", { class: `tab${id === state.active ? " active" : ""}`, title: t.info.root }, h("i", { class: `dot ${dot}` }), h("span", {}, t.info.name), h("small", { class: "mono", title: t.info.lang_name }, t.info.lang_label));
       b.onclick = () => select(id);
       return b;
     }),
@@ -538,9 +536,12 @@ async function main() {
     if (dialog.returnValue !== "create") return;
     const name = $<HTMLInputElement>("new-name").value.trim();
     const parent = $<HTMLInputElement>("new-parent").value.trim();
-    const lang = $<HTMLSelectElement>("new-lang").value as "rust" | "cpp" | "python";
+    const lang = $<HTMLInputElement>("new-lang").value.trim();
     try {
-      addTab(await api.newProject(parent, name, lang));
+      const created = await api.newProject(parent, name, lang);
+      addTab(created.info);
+      // Langage sans squelette intégré : l'agent l'écrit lui-même.
+      if (created.bootstrap) void send(created.bootstrap);
     } catch (e) {
       alert(String(e));
     }

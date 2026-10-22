@@ -1,14 +1,14 @@
 // Pont vers le backend Rust. Hors de Tauri (navigateur, `npm run dev`), un
 // backend de démonstration rejoue un scénario pour travailler l'interface.
 
-import type { AgentEvent, ApprovalRequest, Decision, Lang, Options, ProjectInfo, Status } from "./types";
+import type { AgentEvent, ApprovalRequest, Decision, NewProject, Options, ProjectInfo, Status } from "./types";
 import { demoBackend } from "./demo";
 
 export interface Backend {
   readonly demo: boolean;
   openProject(path: string): Promise<ProjectInfo>;
   pickAndOpen(): Promise<ProjectInfo | null>;
-  newProject(parent: string, name: string, lang: Lang): Promise<ProjectInfo>;
+  newProject(parent: string, name: string, lang: string): Promise<NewProject>;
   pickFolder(): Promise<string | null>;
   refresh(tab: string): Promise<ProjectInfo>;
   startTask(tab: string, prompt: string, options: Options): Promise<void>;

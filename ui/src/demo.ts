@@ -2,7 +2,7 @@
 // Rejoue le scénario de la maquette : build cassé, correctif local, demande de dépendance.
 
 import type { Backend } from "./api";
-import type { AgentEvent, ApprovalRequest, Config, Lang, ProjectInfo } from "./types";
+import type { AgentEvent, ApprovalRequest, Config, ProjectInfo } from "./types";
 
 const config: Config = {
   mode: "auto",
@@ -20,17 +20,17 @@ const NOTES = "# Notes du projet\n\n## Commandes\n- Build : `cargo build`\n\n## 
 
 const projects: Record<string, ProjectInfo> = {
   "moteur-rust": {
-    tab: "moteur-rust", name: "moteur-rust", root: "~/projets/moteur-rust", lang: "rust",
+    tab: "moteur-rust", name: "moteur-rust", root: "~/projets/moteur-rust", lang: "rust", lang_name: "Rust", lang_label: "rs", test: "cargo test",
     files: ["src/main.rs", "src/config.rs", "src/parser.rs", "src/net/client.rs", "tests/config.rs", "Cargo.toml", "NOTES.md"],
     notes: NOTES, config, build: "cargo build --message-format=json",
   },
   "sim-cpp": {
-    tab: "sim-cpp", name: "sim-cpp", root: "~/projets/sim-cpp", lang: "cpp",
+    tab: "sim-cpp", name: "sim-cpp", root: "~/projets/sim-cpp", lang: "cpp", lang_name: "C/C++ (CMake)", lang_label: "cpp", test: null,
     files: ["src/main.cpp", "src/body.hpp", "src/body.cpp", "CMakeLists.txt", "NOTES.md"],
     notes: "# Notes du projet\n\n## Commandes\n- Build : `cmake --build build`\n", config, build: "cmake --build build",
   },
   "vision-py": {
-    tab: "vision-py", name: "vision-py", root: "~/projets/vision-py", lang: "python",
+    tab: "vision-py", name: "vision-py", root: "~/projets/vision-py", lang: "python", lang_name: "Python", lang_label: "py", test: "pytest -x -q",
     files: ["src/vision/__init__.py", "src/vision/detect.py", "tests/test_detect.py", "pyproject.toml", "NOTES.md"],
     notes: "# Notes du projet\n\n## Commandes\n- Tests : `pytest -x -q`\n", config, build: "python3 -m compileall -q .",
   },
@@ -111,7 +111,10 @@ export function demoBackend(): Backend {
     demo: true,
     openProject: async (path) => projects[path] ?? projects["moteur-rust"],
     pickAndOpen: async () => projects["vision-py"],
-    newProject: async (_parent, name, lang: Lang) => ({ ...projects["moteur-rust"], tab: name, name, lang, files: ["NOTES.md"] }),
+    newProject: async (_parent, name, lang) => ({
+      info: { ...projects["moteur-rust"], tab: name, name, lang: lang.toLowerCase(), lang_name: lang, lang_label: lang.slice(0, 3).toLowerCase(), files: ["NOTES.md"], build: null, test: null },
+      bootstrap: `Crée le squelette minimal d'un projet ${lang} nommé « ${name} »…`,
+    }),
     pickFolder: async () => "~/projets",
     refresh: async (tab) => projects[tab],
     startTask: async (tab) => void play(tab, firstHalf),

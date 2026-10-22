@@ -80,15 +80,23 @@ fn local_config(url: String) -> Config {
 }
 
 #[derive(Default)]
-struct Recorder(Mutex<Vec<Event>>);
+struct Recorder(Mutex<Vec<Event>>, Mutex<Vec<ApprovalRequest>>, bool);
+
+impl Recorder {
+    /// Hôte qui accepte toutes les demandes.
+    fn allowing() -> Self {
+        Self(Mutex::default(), Mutex::default(), true)
+    }
+}
 
 impl Host for Recorder {
     fn emit(&self, e: Event) {
         self.0.lock().unwrap().push(e);
     }
-    fn approve(&self, _r: ApprovalRequest) -> oneshot::Receiver<Decision> {
+    fn approve(&self, r: ApprovalRequest) -> oneshot::Receiver<Decision> {
+        self.1.lock().unwrap().push(r);
         let (tx, rx) = oneshot::channel();
-        let _ = tx.send(Decision::Deny);
+        let _ = tx.send(if self.2 { Decision::Allow } else { Decision::Deny });
         rx
     }
 }
@@ -191,4 +199,53 @@ async fn task_uses_native_and_text_tool_calls() {
     let events = host.0.lock().unwrap();
     assert!(events.iter().any(|e| matches!(e, Event::Done { ok: true, .. })));
     assert!(events.iter().any(|e| matches!(e, Event::StepStart { label, .. } if label == "édition src/main.rs")));
+}
+
+#[tokio::test]
+async fn go_project_is_fixed_too() {
+    if std::process::Command::new("go").arg("version").output().is_err() {
+        eprintln!("go absent : test ignoré");
+        return;
+    }
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("g");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("go.mod"), "module g\n\ngo 1.21\n").unwrap();
+    std::fs::write(dir.join("main.go"), "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(y)\n}\n").unwrap();
+
+    let (url, requests) = fake_llm("main.go\n<<<<<<< SEARCH\n\tfmt.Println(y)\n=======\n\tfmt.Println(\"ok\")\n>>>>>>> REPLACE\n").await;
+    let agent = Agent::new(Project::open(&dir).unwrap(), local_config(url), Arc::new(Recorder::default()));
+    let out = agent.fix().await.unwrap();
+    assert!(out.ok, "{:?}", out.remaining);
+    let req = requests.lock().unwrap()[0].clone();
+    assert!(req.contains("undefined: y") && req.contains("main.go:6:14"), "{req}");
+}
+
+/// Langage que rien ne connaît : le modèle propose la commande, l'utilisateur
+/// l'accepte, elle est enregistrée, puis la boucle corrige comme d'habitude.
+#[cfg(unix)]
+#[tokio::test]
+async fn unknown_language_gets_commands_from_the_model() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("x");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("prog.xyz"), "debut\nINTERDIT\nfin\n").unwrap();
+    std::fs::write(dir.join("verifie.sh"), "if grep -n INTERDIT prog.xyz >/dev/null; then echo \"prog.xyz:2: mot interdit\" >&2; exit 1; fi\n").unwrap();
+
+    let (url, requests) = fake_llm_seq(vec![
+        serde_json::json!({"role": "assistant", "content": "{\"build\": \"sh verifie.sh\", \"test\": null}"}),
+        serde_json::json!({"role": "assistant", "content": "prog.xyz\n<<<<<<< SEARCH\nINTERDIT\n=======\nautorise\n>>>>>>> REPLACE\n"}),
+    ])
+    .await;
+    let host = Arc::new(Recorder::allowing());
+    let agent = Agent::new(Project::open(&dir).unwrap(), local_config(url), host.clone());
+    assert_eq!(agent.build_cmd(), None);
+
+    let out = agent.fix().await.unwrap();
+    assert!(out.ok, "{:?}", out.remaining);
+    assert_eq!(host.1.lock().unwrap()[0].detail, "build : sh verifie.sh\ntest  : —");
+    let saved = std::fs::read_to_string(dir.join(".digital-arms/config.toml")).unwrap();
+    assert!(saved.contains("build_cmd = \"sh verifie.sh\""), "{saved}");
+    // L'erreur a été rattachée au bon fichier grâce au format générique.
+    assert!(requests.lock().unwrap()[1].contains("## prog.xyz"));
 }

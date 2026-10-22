@@ -1,0 +1,5 @@
+app.rb:2:in `foo': undefined local variable or method `bar' for main (NameError)
+
+  bar
+  ^^^
+	from app.rb:4:in `<main>'

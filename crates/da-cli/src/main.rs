@@ -9,7 +9,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use da_core::events::{ApprovalRequest, Stream};
 use da_core::llm::OpenAiCompat;
-use da_core::project::{scaffold, Lang};
+use da_core::project::scaffold;
 use da_core::{Agent, Config, Decision, Event, Host, Mode, Project};
 use tokio::sync::oneshot;
 
@@ -55,19 +55,14 @@ enum Cmd {
     },
     /// Parse une sortie de compilateur (fichier ou stdin) et affiche les diagnostics en JSON.
     Diag { file: Option<PathBuf> },
-    /// Crée un nouveau projet (squelette déterministe, sans modèle).
-    New { lang: NewLang, name: String },
+    /// Crée un nouveau projet dans n'importe quel langage (`da new go api`,
+    /// `da new "TypeScript" site`, `da new odin jeu`…). Hors des squelettes
+    /// intégrés, l'agent écrit lui-même le squelette.
+    New { lang: String, name: String },
     /// Annule un correctif à partir de son instantané.
     Undo { snapshot: String },
     /// Vérifie le serveur local et la clé API.
     Doctor,
-}
-
-#[derive(Clone, Copy, ValueEnum)]
-enum NewLang {
-    Rust,
-    Cpp,
-    Python,
 }
 
 struct CliHost {
@@ -186,13 +181,13 @@ async fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&da_core::diag::parse(&text))?);
         }
         Cmd::New { lang, name } => {
-            let lang = match lang {
-                NewLang::Rust => Lang::Rust,
-                NewLang::Cpp => Lang::Cpp,
-                NewLang::Python => Lang::Python,
-            };
-            let dir = scaffold(&cli.dir, name, lang)?;
-            eprintln!("✓ projet créé : {}", dir.display());
+            let s = scaffold(&cli.dir, name, lang)?;
+            eprintln!("✓ dossier créé : {}", s.dir.display());
+            if let Some(prompt) = s.bootstrap {
+                let project = Project::open(&s.dir)?;
+                let cfg = Config::load(&project.root)?;
+                Agent::new(project, cfg, host.clone()).task(&prompt).await?;
+            }
         }
         Cmd::Undo { snapshot } => {
             for f in agent()?.undo(snapshot)? {
@@ -202,8 +197,9 @@ async fn main() -> Result<()> {
         Cmd::Doctor => {
             let a = agent()?;
             let cfg = &a.cfg;
-            eprintln!("projet   {} ({:?})", a.project.root.display(), a.project.lang);
-            eprintln!("build    {}", a.project.build_command(cfg).unwrap_or_else(|| "—".into()));
+            eprintln!("projet   {} ({})", a.project.root.display(), a.project.kind().name);
+            eprintln!("build    {}", a.build_cmd().unwrap_or_else(|| "— (sera proposée par le modèle)".into()));
+            eprintln!("tests    {}", a.test_cmd().unwrap_or_else(|| "—".into()));
             eprintln!("mode     {:?}", cfg.mode);
             match OpenAiCompat::new(cfg.local.clone()).health().await {
                 Ok(models) => {

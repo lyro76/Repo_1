@@ -1,7 +1,7 @@
 # Digital Arms — consignes pour Claude Code
 
-Agent de bureau qui code et corrige des projets Rust/C++/Python avec un modèle local
-compatible OpenAI, et l'API Claude en renfort. Lis `docs/ARCHITECTURE.md` avant un changement de fond.
+Agent de bureau qui code et corrige des projets **dans n'importe quel langage** avec un modèle
+local compatible OpenAI, et l'API Claude en renfort. Lis `docs/ARCHITECTURE.md` avant un changement de fond.
 
 ## Commandes
 - Build moteur + CLI : `cargo build` (le workspace exclut `src-tauri` par défaut)
@@ -14,7 +14,9 @@ compatible OpenAI, et l'API Claude en renfort. Lis `docs/ARCHITECTURE.md` avant 
 - Tout ce qui n'est pas de l'interface va dans `da-core`. `src-tauri` et `da-cli` ne font que brancher un `Host`.
 - Un nouvel événement : `events.rs` → `ui/src/types.ts` → `onEvent` dans `ui/src/main.ts` → `demo.ts` si utile.
 - Un nouvel outil d'agent : `tools.rs` (spec + `dispatch` + `label`). Sortie courte : les modèles locaux ont 16k de contexte.
-- Un nouveau format d'erreur : un module dans `diag/`, une fixture **réelle** dans `tests/fixtures/`, un test.
+- Aucun langage codé en dur comme limite : un écosystème connu est un raccourci (`project::detect`),
+  jamais une condition. Sans détection, `Agent::ensure_build_cmd` fait proposer les commandes par le modèle.
+- Un nouveau format d'erreur : dans `diag/`, une fixture **réelle** dans `tests/fixtures/`, un test.
 - Le local reste prioritaire : pas d'appel API sans mode `api`/`auto` et clé présente.
 - API Anthropic : HTTP brut dans `llm/anthropic.rs` (pas de SDK Rust officiel). Vérifier `stop_reason`
   avant de lire `content`, renvoyer `content` tel quel au tour suivant, pas de `temperature`.

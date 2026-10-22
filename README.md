@@ -24,6 +24,7 @@ et peut passer à l'API Claude quand le local tourne en rond.
   (le modèle reçoit le test et le code testé). 3 tentatives, puis escalade vers l'API en mode Auto.
 - **Mémoire de conversation** : chaque échange est résumé et redonné au modèle à la demande
   suivante ; la conversation est enregistrée par projet (Nouvelle / Historique).
+- **Réponses en direct** : le texte du modèle s'affiche pendant qu'il l'écrit.
 - **Réglages et premier lancement** : détection de la carte graphique, modèle conseillé,
   téléchargement via Ollama, clé API enregistrable.
 - **Annuler ce correctif** : chaque modification est précédée d'un instantané.
@@ -40,6 +41,10 @@ Linux `.deb`/`.AppImage`, macOS `.dmg`), puis installe un modèle local :
 ```bash
 ollama pull qwen2.5-coder:14b
 ```
+
+> Ollama limite par défaut la mémoire de conversation du modèle à quelques milliers de tokens.
+> Pour en profiter pleinement, lance Ollama avec `OLLAMA_CONTEXT_LENGTH=16384`
+> (variable d'environnement Windows, puis redémarrer Ollama).
 
 Publier une nouvelle version : changer `"version"` dans `src-tauri/tauri.conf.json` (et dans
 `Cargo.toml`), pousser sur `digital-arms` — GitHub Actions construit les installateurs et crée

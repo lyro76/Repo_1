@@ -67,13 +67,31 @@ enum Cmd {
 
 struct CliHost {
     yes: bool,
+    /// Du texte a déjà été affiché en direct pour le message en cours.
+    streamed: std::sync::atomic::AtomicBool,
 }
 
 impl Host for CliHost {
     fn emit(&self, e: Event) {
         match e {
-            Event::Text { text } => println!("\n{text}\n"),
-            Event::StepStart { label, .. } => eprintln!("  › {label}"),
+            Event::Delta { text } => {
+                if !self.streamed.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    println!();
+                }
+                print!("{text}");
+                let _ = std::io::stdout().flush();
+            }
+            // Déjà affiché morceau par morceau : on termine juste la ligne.
+            Event::Text { text } => match self.streamed.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                true => println!("\n"),
+                false => println!("\n{text}\n"),
+            },
+            Event::StepStart { label, .. } => {
+                if self.streamed.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                    println!();
+                }
+                eprintln!("  › {label}")
+            }
             Event::StepEnd { summary, ok, .. } => eprintln!("    {} {summary}", if ok { "✓" } else { "✗" }),
             Event::Terminal { line, stream: Stream::Agent } => eprintln!("\x1b[34m{line}\x1b[0m"),
             Event::Terminal { line, .. } => eprintln!("\x1b[2m{line}\x1b[0m"),
@@ -125,7 +143,7 @@ impl Host for CliHost {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let host: Arc<dyn Host> = Arc::new(CliHost { yes: cli.yes });
+    let host: Arc<dyn Host> = Arc::new(CliHost { yes: cli.yes, streamed: Default::default() });
 
     let agent = || -> Result<Agent> {
         let project = Project::open(&cli.dir)?;

@@ -105,11 +105,19 @@ export function demoBackend(): Backend {
   let onEvent: (tab: string, e: AgentEvent) => void = () => {};
   let onApproval: (tab: string, r: ApprovalRequest) => void = () => {};
 
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms * (window.location.hash === "#instant" ? 0 : 1)));
   const play = async (tab: string, steps: Step[]) => {
     for (const [delay, item] of steps) {
-      await new Promise((r) => setTimeout(r, delay * (window.location.hash === "#instant" ? 0 : 1)));
+      await wait(delay);
       if ("approval" in item) onApproval(tab, item.approval);
-      else onEvent(tab, item);
+      else if (item.type === "text") {
+        // Comme un vrai modèle : le texte arrive par morceaux, puis le message complet.
+        for (const word of item.text.match(/\S+\s*/g) ?? []) {
+          onEvent(tab, { type: "delta", text: word });
+          await wait(25);
+        }
+        onEvent(tab, item);
+      } else onEvent(tab, item);
     }
   };
 

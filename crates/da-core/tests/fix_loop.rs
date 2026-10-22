@@ -338,3 +338,79 @@ async fn failing_pytest_is_fixed() {
     assert!(req.contains("tests/test_calc.py:5"), "{req}");
     assert!(req.contains("## src/calc/__init__.py (code testé"), "{req}");
 }
+
+/// Serveur qui répond en flux SSE, morceau par morceau, comme Ollama ou LM Studio.
+async fn fake_sse(replies: Vec<Vec<serde_json::Value>>) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/v1", listener.local_addr().unwrap());
+    let replies = Arc::new(replies);
+    let count = Arc::new(Mutex::new(0usize));
+    tokio::spawn(async move {
+        loop {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let (replies, count) = (replies.clone(), count.clone());
+            tokio::spawn(async move {
+                let mut buf = Vec::new();
+                let mut chunk = [0u8; 8192];
+                loop {
+                    let n = sock.read(&mut chunk).await.unwrap();
+                    buf.extend_from_slice(&chunk[..n]);
+                    let text = String::from_utf8_lossy(&buf).to_string();
+                    let Some(head) = text.find("\r\n\r\n") else { continue };
+                    let len: usize = text[..head].lines().find_map(|l| l.to_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse().unwrap())).unwrap_or(0);
+                    if buf.len() >= head + 4 + len {
+                        break;
+                    }
+                }
+                let i = {
+                    let mut c = count.lock().unwrap();
+                    *c += 1;
+                    *c - 1
+                };
+                sock.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n").await.unwrap();
+                for c in &replies[i.min(replies.len() - 1)] {
+                    sock.write_all(format!("data: {c}\n\n").as_bytes()).await.unwrap();
+                    sock.flush().await.unwrap();
+                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                }
+                sock.write_all(b"data: [DONE]\n\n").await.unwrap();
+            });
+        }
+    });
+    url
+}
+
+#[tokio::test]
+async fn streamed_reply_reaches_the_interface_piece_by_piece() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("s");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("notes.txt"), "un\ndeux\n").unwrap();
+
+    let delta = |t: &str| serde_json::json!({"choices": [{"delta": {"content": t}}]});
+    let url = fake_sse(vec![
+        // 1er tour : du texte puis un appel d'outil découpé en morceaux.
+        vec![
+            delta("Je regarde "),
+            delta("le fichier."),
+            serde_json::json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "type": "function", "function": {"name": "read_file", "arguments": "{\"path\":"}}]}}]}),
+            serde_json::json!({"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": "\"notes.txt\"}"}}]}}]}),
+            serde_json::json!({"choices": [{"delta": {}, "finish_reason": "tool_calls"}]}),
+        ],
+        // 2e tour : la réponse finale.
+        vec![delta("Il contient "), delta("deux lignes."), serde_json::json!({"choices": [{"delta": {}, "finish_reason": "stop"}]})],
+    ])
+    .await;
+    let mut cfg = local_config(url);
+    cfg.auto_fix = false;
+    let host = Arc::new(Recorder::default());
+    let agent = Agent::new(Project::open(&dir).unwrap(), cfg, host.clone());
+    agent.task("que contient notes.txt ?").await.unwrap();
+
+    let events = host.0.lock().unwrap();
+    let deltas: Vec<&str> = events.iter().filter_map(|e| if let Event::Delta { text } = e { Some(text.as_str()) } else { None }).collect();
+    assert_eq!(deltas, ["Je regarde ", "le fichier.", "Il contient ", "deux lignes."]);
+    // L'outil a bien été appelé avec les arguments recollés.
+    assert!(events.iter().any(|e| matches!(e, Event::StepEnd { summary, ok: true, .. } if summary == "2 lignes")));
+    assert!(events.iter().any(|e| matches!(e, Event::Text { text } if text == "Il contient deux lignes.")));
+}

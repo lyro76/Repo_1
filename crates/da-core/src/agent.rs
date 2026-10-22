@@ -136,7 +136,20 @@ impl Agent {
     }
 
     async fn chat(&self, backend: &Backend, system: &str, msgs: &[Msg], tools: &[crate::llm::ToolSpec]) -> Result<crate::llm::Reply> {
-        let reply = backend.chat(system, msgs, tools).await?;
+        let reply = backend.chat(system, msgs, tools, None).await?;
+        self.count_call(backend);
+        Ok(reply)
+    }
+
+    /// Comme `chat`, mais le texte s'affiche au fur et à mesure (`Event::Delta`).
+    async fn chat_live(&self, backend: &Backend, system: &str, msgs: &[Msg], tools: &[crate::llm::ToolSpec]) -> Result<crate::llm::Reply> {
+        let show = |t: &str| self.host.emit(Event::Delta { text: t.to_string() });
+        let reply = backend.chat(system, msgs, tools, Some(&show)).await?;
+        self.count_call(backend);
+        Ok(reply)
+    }
+
+    fn count_call(&self, backend: &Backend) {
         let key = match backend.which() {
             Which::Local => "local",
             Which::Api => "api",
@@ -147,7 +160,6 @@ impl Agent {
             c[key]
         };
         self.emit(Event::Usage { backend: key.into(), calls: n });
-        Ok(reply)
     }
 
     fn context(&self) -> String {
@@ -241,7 +253,7 @@ impl Agent {
                     self.emit(Event::Terminal { line: format!("agent › contexte plein : {n} ancien(s) résultat(s) retiré(s)"), stream: Stream::Agent });
                 }
             }
-            let reply = match self.chat(backend, &system, &msgs, &specs).await {
+            let reply = match self.chat_live(backend, &system, &msgs, &specs).await {
                 Ok(r) => r,
                 Err(e) if backend.which() == Which::Local && self.escalation().is_some() => {
                     self.emit(Event::Escalated { reason: format!("modèle local indisponible : {e:#}") });

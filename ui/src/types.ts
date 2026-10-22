@@ -23,6 +23,7 @@ export interface Diagnostic {
 
 export type AgentEvent =
   | { type: "text"; text: string }
+  | { type: "delta"; text: string }
   | { type: "step_start"; id: number; label: string }
   | { type: "step_end"; id: number; summary: string; ok: boolean }
   | { type: "terminal"; line: string; stream: "stdout" | "stderr" | "agent" }

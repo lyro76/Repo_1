@@ -6,6 +6,7 @@
 
 mod anthropic;
 mod openai;
+pub mod sse;
 mod text_tools;
 
 use anyhow::Result;
@@ -90,10 +91,11 @@ impl Backend {
         }
     }
 
-    pub async fn chat(&self, system: &str, msgs: &[Msg], tools: &[ToolSpec]) -> Result<Reply> {
+    /// Envoie la conversation ; `on_text` reçoit le texte au fur et à mesure.
+    pub async fn chat(&self, system: &str, msgs: &[Msg], tools: &[ToolSpec], on_text: sse::OnText<'_>) -> Result<Reply> {
         match self {
-            Backend::Local(c) => c.chat(system, msgs, tools).await,
-            Backend::Api(c) => c.chat(system, msgs, tools).await,
+            Backend::Local(c) => c.chat(system, msgs, tools, on_text).await,
+            Backend::Api(c) => c.chat(system, msgs, tools, on_text).await,
         }
     }
 }

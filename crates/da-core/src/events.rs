@@ -7,8 +7,11 @@ use crate::diag::Diagnostic;
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Event {
-    /// Texte du modèle destiné à l'utilisateur.
+    /// Texte du modèle destiné à l'utilisateur (message complet, remplace
+    /// les morceaux `Delta` reçus avant lui).
     Text { text: String },
+    /// Morceau de texte pendant que le modèle écrit.
+    Delta { text: String },
     /// Une action compacte (« cargo build », « lecture src/x.rs:1-40 »…).
     StepStart { id: u64, label: String },
     StepEnd { id: u64, summary: String, ok: bool },

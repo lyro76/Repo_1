@@ -10,6 +10,8 @@ type FeedItem =
   | { kind: "user"; text: string }
   | { kind: "step"; id: number; label: string; summary?: string; ok?: boolean }
   | { kind: "text"; text: string }
+  /** Réponse en cours d'écriture (jamais enregistrée). */
+  | { kind: "live"; text: string }
   | { kind: "approval"; req: ApprovalRequest; answer?: Decision | "expired" }
   | { kind: "notice"; text: string; tone: "warn" | "ok" | "err" };
 
@@ -149,6 +151,8 @@ function renderFeed() {
         return h("div", { class: "msg user" }, f.text);
       case "text":
         return h("div", { class: "msg agent" }, rich(f.text));
+      case "live":
+        return h("div", { class: "msg agent live", id: "live" }, f.text);
       case "notice":
         return h("div", { class: `notice ${f.tone}` }, f.text);
       case "step": {
@@ -320,7 +324,7 @@ let api: Backend;
 /** Fil enregistré → fil affichable : ce qui était en cours ne l'est plus. */
 function restoreFeed(saved: unknown): FeedItem[] {
   if (!Array.isArray(saved)) return [];
-  return (saved as FeedItem[]).map((f) => {
+  return (saved as FeedItem[]).filter((f) => f.kind !== "live").map((f) => {
     if (f.kind === "approval" && !f.answer) return { ...f, answer: "expired" as const };
     if (f.kind === "step" && f.ok === undefined) return { ...f, ok: false, summary: "interrompu" };
     return f;
@@ -335,7 +339,7 @@ function persist(t: TabState) {
   clearTimeout(saveTimers.get(tab));
   saveTimers.set(
     tab,
-    window.setTimeout(() => void api.saveFeed(tab, t.feed.slice(-400)).catch(() => {}), 800),
+    window.setTimeout(() => void api.saveFeed(tab, t.feed.filter((f) => f.kind !== "live").slice(-400)).catch(() => {}), 800),
   );
 }
 
@@ -435,6 +439,21 @@ async function undoPatch() {
 function onEvent(tab: string, e: AgentEvent) {
   const t = state.tabs.get(tab);
   if (!t) return;
+  const last = t.feed[t.feed.length - 1];
+  if (e.type === "delta") {
+    if (last?.kind === "live") last.text += e.text;
+    else t.feed.push({ kind: "live", text: e.text });
+    // Mise à jour ciblée : pas de rendu complet du fil à chaque morceau.
+    const el = tab === state.active ? document.getElementById("live") : null;
+    if (el && last?.kind === "live") {
+      el.textContent = last.text;
+      const feed = $("feed");
+      if (feed.scrollHeight - feed.scrollTop - feed.clientHeight < 80) feed.scrollTop = feed.scrollHeight;
+    } else if (tab === state.active) renderFeed();
+    return;
+  }
+  // Un message complet remplace la bulle en cours ; tout autre événement la clôt.
+  if (last?.kind === "live" && e.type !== "terminal" && e.type !== "usage") t.feed.pop();
   switch (e.type) {
     case "text":
       t.feed.push({ kind: "text", text: e.text });

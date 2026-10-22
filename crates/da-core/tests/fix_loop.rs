@@ -249,3 +249,38 @@ async fn unknown_language_gets_commands_from_the_model() {
     // L'erreur a été rattachée au bon fichier grâce au format générique.
     assert!(requests.lock().unwrap()[1].contains("## prog.xyz"));
 }
+
+/// La deuxième demande voit la première (résumée) : « écris les tests »
+/// après « ajoute un timeout » a du sens pour l'agent.
+#[tokio::test]
+async fn second_task_remembers_the_first() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dir = tmp.path().join("m");
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::write(dir.join("Cargo.toml"), "[package]\nname = \"m\"\nversion = \"0.1.0\"\nedition = \"2021\"\n").unwrap();
+    std::fs::write(dir.join("src/main.rs"), "fn main() {}\n").unwrap();
+
+    let (url, requests) = fake_llm_seq(vec![
+        serde_json::json!({"role": "assistant", "content": "J'ai ajouté un timeout de 5 s au client."}),
+        serde_json::json!({"role": "assistant", "content": "Tests écrits."}),
+    ])
+    .await;
+    let agent = Agent::new(Project::open(&dir).unwrap(), local_config(url), Arc::new(Recorder::default()));
+    agent.task("ajoute un timeout configurable").await.unwrap();
+    agent.task("maintenant écris les tests").await.unwrap();
+
+    let reqs = requests.lock().unwrap();
+    assert_eq!(reqs.len(), 2);
+    let second: serde_json::Value = serde_json::from_str(&reqs[1]).unwrap();
+    let contents: Vec<&str> = second["messages"].as_array().unwrap().iter().filter_map(|m| m["content"].as_str()).collect();
+    // système, demande 1, réponse 1 (résumée), demande 2
+    assert_eq!(contents.len(), 4, "{contents:?}");
+    assert_eq!(contents[1], "ajoute un timeout configurable");
+    assert!(contents[2].starts_with("J'ai ajouté un timeout de 5 s au client.") && contents[2].contains("[Build : OK]"), "{}", contents[2]);
+    assert_eq!(contents[3], "maintenant écris les tests");
+
+    // Et c'est sur disque : rouvrir le projet garde la mémoire.
+    let conv = da_core::conversation::Conversation::current(&dir);
+    assert_eq!(conv.turns.len(), 2);
+    assert_eq!(conv.turns[1].summary, "Tests écrits.");
+}

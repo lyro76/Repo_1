@@ -67,6 +67,15 @@ export interface ProjectInfo {
   config: Config;
   build: string | null;
   test: string | null;
+  /** Fil de la conversation en cours, tel qu'enregistré par l'interface (null si aucun). */
+  feed: unknown;
+}
+
+export interface ConversationInfo {
+  id: string;
+  title: string;
+  started: number;
+  turns: number;
 }
 
 export interface NewProject {

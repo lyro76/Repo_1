@@ -81,7 +81,8 @@ code { font-family: var(--mono); font-size: 12.5px; background: var(--bg-3); bor
 @keyframes pulse { 50% { opacity: 0.3; } }
 .feed { flex: 1; overflow-y: auto; padding: 20px 20px 24px; display: flex; flex-direction: column; gap: 6px; }
 .msg.user { align-self: flex-end; max-width: 78%; background: var(--bg-3); border: 1px solid var(--line); padding: 10px 14px; border-radius: var(--r); font-weight: 500; margin: 0 0 12px; white-space: pre-wrap; }
-.msg.agent { margin: 10px 4px; max-width: 92%; font-weight: 500; }
+.msg.agent { margin: 10px 4px; max-width: 92%; font-weight: 500; white-space: pre-wrap; }
+.msg.agent pre.code { white-space: pre; overflow-x: auto; font-weight: 400; background: var(--bg-1); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 8px 0; }
 .step { display: flex; align-items: center; gap: 10px; background: var(--bg-1); border: 1px solid var(--line); border-radius: 6px; padding: 5px 12px; max-width: 92%; }
 .step .chev { color: var(--dim); }
 .step .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -215,3 +216,12 @@ dialog select {
   background-size: 5px 5px;
   background-repeat: no-repeat;
 }
+
+/* ---- conversations ---- */
+.head-btn { border: 1px solid var(--line); background: var(--bg-1); border-radius: 6px; padding: 3px 10px; font-size: 12.5px; color: var(--muted); }
+.head-btn:hover:not(:disabled) { color: var(--text); border-color: var(--dim); }
+.history-pop { position: fixed; z-index: 10; width: 360px; max-height: 420px; overflow-y: auto; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); padding: 6px; }
+.hist-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 10px; border-radius: 6px; }
+.hist-item:hover { background: var(--bg-3); }
+.hist-item .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.empty-hist { padding: 10px; }

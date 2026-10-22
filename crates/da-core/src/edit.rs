@@ -199,6 +199,15 @@ impl Snapshot {
         Ok(())
     }
 
+    /// Fichiers touchés par un instantané enregistré.
+    pub fn files_of(root: &Path, id: &str) -> Vec<String> {
+        std::fs::read_to_string(Self::path(root, id))
+            .ok()
+            .and_then(|t| serde_json::from_str::<Snapshot>(&t).ok())
+            .map(|s| s.files.into_keys().collect())
+            .unwrap_or_default()
+    }
+
     /// Remet les fichiers dans leur état d'avant le correctif.
     pub fn restore(root: &Path, id: &str) -> Result<Vec<String>> {
         let text = std::fs::read_to_string(Self::path(root, id)).with_context(|| format!("instantané {id} introuvable"))?;

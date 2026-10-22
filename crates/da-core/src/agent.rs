@@ -10,6 +10,7 @@ use std::time::Duration;
 use anyhow::{bail, Result};
 
 use crate::config::{Config, Mode};
+use crate::conversation::{self, Conversation, Turn};
 use crate::diag::{self, Diagnostic};
 use crate::edit::{self, Snapshot};
 use crate::events::{Event, Host, Stream};
@@ -144,7 +145,49 @@ impl Agent {
     }
 
     /// Exécute une demande libre (« ajoute un timeout configurable au client réseau »).
+    ///
+    /// L'agent connaît les échanges précédents de la conversation (résumés),
+    /// et celui-ci y est ajouté à la fin, même en cas d'échec.
     pub async fn task(&self, prompt: &str) -> Result<()> {
+        let mut turn = Turn { prompt: prompt.to_string(), summary: String::new(), files: Vec::new(), ok: None, at: conversation::now() };
+        let result = self.run_task(prompt, &mut turn).await;
+        if let Err(e) = &result {
+            turn.summary = format!("{}\n(Interrompu : {e:#})", turn.summary).trim().to_string();
+        }
+        let _ = Conversation::record(&self.project.root, turn);
+        result
+    }
+
+    /// `fix` seul (bouton ou `/fix`), enregistré comme un échange de la conversation.
+    pub async fn fix_turn(&self, prompt: &str) -> Result<FixOutcome> {
+        let out = self.fix().await;
+        let summary = match &out {
+            Ok(o) if o.ok => format!("Build OK après {} correctif(s).", o.attempts),
+            Ok(o) => format!("{} erreur(s) restantes : {}", o.remaining.len(), o.remaining.iter().take(3).map(|d| d.headline()).collect::<Vec<_>>().join(" ; ")),
+            Err(e) => format!("Interrompu : {e:#}"),
+        };
+        let files = out.as_ref().map(|o| self.snapshot_files(&o.snapshots)).unwrap_or_default();
+        let ok = out.as_ref().ok().map(|o| o.ok);
+        let _ = Conversation::record(&self.project.root, Turn { prompt: prompt.into(), summary, files, ok, at: conversation::now() });
+        out
+    }
+
+    fn snapshot_files(&self, ids: &[String]) -> Vec<String> {
+        let mut files: Vec<String> = ids.iter().flat_map(|id| Snapshot::files_of(&self.project.root, id)).collect();
+        files.sort();
+        files.dedup();
+        files
+    }
+
+    /// Caractères d'historique accordés selon le modèle (un quart du contexte en local).
+    fn history_budget(&self, backend: &Backend) -> usize {
+        match backend.which() {
+            Which::Local => self.cfg.local.context_tokens * 7 / 2 / 4,
+            Which::Api => 400_000,
+        }
+    }
+
+    async fn run_task(&self, prompt: &str, turn: &mut Turn) -> Result<()> {
         let system = format!("{TASK_SYSTEM}\n\n{}", self.context());
         let mut user = prompt.to_string();
 
@@ -163,12 +206,22 @@ impl Agent {
 
         let toolbox = self.toolbox();
         let specs = tools::specs();
-        let mut msgs = vec![Msg::User(user)];
         let mut backend = self.primary()?;
+        let mut msgs = Conversation::current(&self.project.root).history(self.history_budget(backend));
+        msgs.push(Msg::User(user));
+        let fixed_chars = system.len() + serde_json::to_string(&specs).map(|s| s.len()).unwrap_or(0);
         let mut seen: HashMap<String, u32> = HashMap::new();
         let mut finished = false;
 
         for _ in 0..self.cfg.max_steps {
+            // Le contexte d'un modèle local est petit : les vieux résultats d'outils sortent.
+            // (Jamais côté API : l'historique déjà envoyé n'y est pas réécrit.)
+            if backend.which() == Which::Local {
+                let n = conversation::fit(&mut msgs, fixed_chars, self.cfg.local.context_tokens);
+                if n > 0 {
+                    self.emit(Event::Terminal { line: format!("agent › contexte plein : {n} ancien(s) résultat(s) retiré(s)"), stream: Stream::Agent });
+                }
+            }
             let reply = match self.chat(backend, &system, &msgs, &specs).await {
                 Ok(r) => r,
                 Err(e) if backend.which() == Which::Local && self.escalation().is_some() => {
@@ -179,7 +232,8 @@ impl Agent {
                 Err(e) => return Err(e),
             };
             if !reply.text.trim().is_empty() {
-                self.emit(Event::Text { text: reply.text.trim().to_string() });
+                turn.summary = reply.text.trim().to_string();
+                self.emit(Event::Text { text: turn.summary.clone() });
             }
             if reply.tool_calls.is_empty() {
                 if reply.truncated {
@@ -221,12 +275,17 @@ impl Agent {
             }
         }
         self.save_snapshot(&toolbox);
+        turn.files = toolbox.snapshot.lock().unwrap().files.keys().cloned().collect();
 
         if !finished {
             self.emit(Event::Text { text: format!("Arrêt après {} actions. Relance la tâche pour continuer.", self.cfg.max_steps) });
         }
         if self.cfg.auto_fix && self.ensure_build_cmd().await.is_some() {
             let out = self.fix().await?;
+            turn.ok = Some(out.ok);
+            turn.files.extend(self.snapshot_files(&out.snapshots));
+            turn.files.sort();
+            turn.files.dedup();
             self.emit(Event::Done { ok: out.ok, summary: if out.ok { "build OK".into() } else { format!("{} erreur(s) restantes", out.remaining.len()) } });
         } else {
             self.emit(Event::Done { ok: finished, summary: "terminé".into() });

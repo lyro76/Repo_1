@@ -7,6 +7,7 @@
 
 pub mod agent;
 pub mod config;
+pub mod conversation;
 pub mod diag;
 pub mod edit;
 pub mod events;

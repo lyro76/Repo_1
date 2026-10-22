@@ -10,7 +10,7 @@ type FeedItem =
   | { kind: "user"; text: string }
   | { kind: "step"; id: number; label: string; summary?: string; ok?: boolean }
   | { kind: "text"; text: string }
-  | { kind: "approval"; req: ApprovalRequest; answer?: Decision }
+  | { kind: "approval"; req: ApprovalRequest; answer?: Decision | "expired" }
   | { kind: "notice"; text: string; tone: "warn" | "ok" | "err" };
 
 interface Patch {
@@ -54,12 +54,19 @@ const state = {
 
 const cur = () => (state.active ? state.tabs.get(state.active) ?? null : null);
 
-/** Texte avec `code` en ligne, sans HTML. */
+/** Texte de l'agent, sans HTML : blocs ```code```, `code` en ligne, sauts de ligne gardés. */
 function rich(text: string): DocumentFragment {
   const f = document.createDocumentFragment();
-  text.split(/(`[^`]+`)/g).forEach((part) => {
-    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) f.append(h("code", {}, part.slice(1, -1)));
-    else f.append(part);
+  text.split(/(```[^\n]*\n[\s\S]*?(?:```|$))/g).forEach((block) => {
+    const fence = /^```([^\n]*)\n([\s\S]*?)(?:```)?$/.exec(block);
+    if (fence) {
+      f.append(h("pre", { class: "code mono", "data-lang": fence[1].trim() || undefined }, fence[2].replace(/\n$/, "")));
+      return;
+    }
+    block.split(/(`[^`\n]+`)/g).forEach((part) => {
+      if (part.startsWith("`") && part.endsWith("`") && part.length > 2) f.append(h("code", {}, part.slice(1, -1)));
+      else f.append(part);
+    });
   });
   return f;
 }
@@ -128,6 +135,8 @@ function renderFeed() {
   badge.className = `badge${t?.busy ? " on" : ""}`;
   badge.textContent = t?.busy ? "Agent en cours" : "";
   $("stop").hidden = !t?.busy;
+  $("new-conv").toggleAttribute("disabled", !t || t.busy || !t.feed.length);
+  $("history").toggleAttribute("disabled", !t || t.busy);
 
   if (!t) {
     feed.replaceChildren(h("div", { class: "empty" }, h("img", { src: "/logo.png", alt: "Digital Arms" }), h("p", {}, "Ouvre ou crée un projet avec ", h("b", {}, "+"), " pour commencer.")));
@@ -148,7 +157,8 @@ function renderFeed() {
       case "approval": {
         const card = h("div", { class: `approval${f.answer ? " answered" : ""}` }, h("div", { class: "title" }, h("span", { class: "warn-ico" }, "⚠"), f.req.title), h("pre", { class: "mono" }, f.req.detail));
         if (f.answer) {
-          card.append(h("div", { class: "muted small" }, f.answer === "deny" ? "Refusé" : f.answer === "always_allow" ? `Autorisé · toujours pour « ${f.req.rule} »` : "Autorisé"));
+          const said = { deny: "Refusé", always_allow: `Autorisé · toujours pour « ${f.req.rule} »`, allow: "Autorisé", expired: "Sans réponse (application fermée)" };
+          card.append(h("div", { class: "muted small" }, said[f.answer]));
         } else {
           const act = (d: Decision) => () => answer(i, d);
           const allow = h("button", { class: "primary" }, "Autoriser");
@@ -295,9 +305,31 @@ function render() {
 
 let api: Backend;
 
+/** Fil enregistré → fil affichable : ce qui était en cours ne l'est plus. */
+function restoreFeed(saved: unknown): FeedItem[] {
+  if (!Array.isArray(saved)) return [];
+  return (saved as FeedItem[]).map((f) => {
+    if (f.kind === "approval" && !f.answer) return { ...f, answer: "expired" as const };
+    if (f.kind === "step" && f.ok === undefined) return { ...f, ok: false, summary: "interrompu" };
+    return f;
+  });
+}
+
+const saveTimers = new Map<string, number>();
+
+/** Enregistre le fil de la conversation (regroupé, au plus une fois par seconde). */
+function persist(t: TabState) {
+  const tab = t.info.tab;
+  clearTimeout(saveTimers.get(tab));
+  saveTimers.set(
+    tab,
+    window.setTimeout(() => void api.saveFeed(tab, t.feed.slice(-400)).catch(() => {}), 800),
+  );
+}
+
 function addTab(info: ProjectInfo) {
   if (!state.tabs.has(info.tab)) {
-    state.tabs.set(info.tab, { info, feed: [], busy: false, diags: [], patch: null, build: null, terminal: [], modified: new Set(), lastCommand: "", escalated: false });
+    state.tabs.set(info.tab, { info, feed: restoreFeed(info.feed), busy: false, diags: [], patch: null, build: null, terminal: [], modified: new Set(), lastCommand: "", escalated: false });
     state.order.push(info.tab);
   }
   select(info.tab);
@@ -336,6 +368,7 @@ async function send(text: string) {
   if (text.trim() === "/fix") return runFix(state.mode);
   t.feed.push({ kind: "user", text: text.trim() });
   resetRun(t);
+  persist(t);
   render();
   try {
     await api.startTask(t.info.tab, text.trim(), options());
@@ -351,6 +384,7 @@ async function runFix(mode: Mode) {
   if (!t || t.busy) return;
   t.feed.push({ kind: "user", text: mode === "api" ? "Corrige le build (API)" : "Corrige le build" });
   resetRun(t);
+  persist(t);
   render();
   try {
     await api.startFix(t.info.tab, options(mode));
@@ -366,6 +400,7 @@ async function answer(index: number, d: Decision) {
   const item = t?.feed[index];
   if (!t || item?.kind !== "approval") return;
   item.answer = d;
+  persist(t);
   render();
   await api.answer(t.info.tab, item.req.id, d);
 }
@@ -378,6 +413,7 @@ async function undoPatch() {
   files.forEach((f) => t.modified.delete(f));
   t.patch = null;
   t.build = null; // le build d'après correctif ne vaut plus
+  persist(t);
 
   render();
 }
@@ -432,6 +468,7 @@ function onEvent(tab: string, e: AgentEvent) {
       });
       break;
   }
+  if (e.type !== "terminal" && e.type !== "usage") persist(t);
   if (tab === state.active) render();
   else renderTabs();
 }
@@ -440,6 +477,7 @@ function onApproval(tab: string, req: ApprovalRequest) {
   const t = state.tabs.get(tab);
   if (!t) return;
   t.feed.push({ kind: "approval", req });
+  persist(t);
   if (tab === state.active) render();
   else renderTabs();
 }
@@ -447,6 +485,51 @@ function onApproval(tab: string, req: ApprovalRequest) {
 function syncChips() {
   $("opt-autofix").setAttribute("aria-pressed", String(state.autoFix));
   $("opt-confirm").setAttribute("aria-pressed", String(state.confirmWrites));
+}
+
+async function newConversation() {
+  const t = cur();
+  if (!t || t.busy) return;
+  await api.newConversation(t.info.tab);
+  t.feed = [];
+  t.diags = [];
+  t.patch = null;
+  t.build = null;
+  render();
+}
+
+function closeHistory() {
+  document.getElementById("history-pop")?.remove();
+}
+
+async function toggleHistory(anchor: HTMLElement) {
+  if (document.getElementById("history-pop")) return closeHistory();
+  const t = cur();
+  if (!t) return;
+  const list = await api.listConversations(t.info.tab);
+  const date = (s: number) => new Date(s * 1000).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const pop = h(
+    "div",
+    { id: "history-pop", class: "history-pop" },
+    list.length ? null : h("div", { class: "muted small empty-hist" }, "Aucune conversation archivée."),
+    ...list.map((c) => {
+      const b = h("button", { class: "hist-item" }, h("span", { class: "t" }, c.title), h("small", { class: "muted" }, `${date(c.started)} · ${c.turns} échange${c.turns > 1 ? "s" : ""}`));
+      b.onclick = async () => {
+        closeHistory();
+        if (t.busy) return;
+        t.feed = restoreFeed(await api.restoreConversation(t.info.tab, c.id));
+        t.diags = [];
+        t.patch = null;
+        t.build = null;
+        render();
+      };
+      return b;
+    }),
+  );
+  const r = anchor.getBoundingClientRect();
+  pop.style.top = `${r.bottom + 6}px`;
+  pop.style.right = `${window.innerWidth - r.right}px`;
+  document.body.append(pop);
 }
 
 /** Après un changement de réglages : modèle, mode et état du serveur à jour. */
@@ -532,6 +615,15 @@ async function main() {
     if (t) t.terminal = [];
     renderTerminal();
   };
+
+  $("new-conv").onclick = () => void newConversation();
+  $("history").onclick = (ev) => {
+    ev.stopPropagation();
+    void toggleHistory($("history"));
+  };
+  document.addEventListener("click", (ev) => {
+    if (!(ev.target as HTMLElement).closest("#history-pop")) closeHistory();
+  });
 
   $("open-settings").onclick = async () => {
     if (await openSettings(api)) await afterSettings();

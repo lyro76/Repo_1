@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use da_core::events::ApprovalRequest;
 use da_core::llm::OpenAiCompat;
+use da_core::conversation::{Conversation, ConversationInfo};
 use da_core::memory::Notes;
 use da_core::project::scaffold;
 use da_core::{Agent, Config, Decision, Event, Host, Mode, Project};
@@ -69,6 +70,8 @@ struct ProjectInfo {
     config: Config,
     build: Option<String>,
     test: Option<String>,
+    /// Fil de la conversation en cours, tel que l'interface l'a enregistré.
+    feed: serde_json::Value,
 }
 
 fn info(tab: &str, root: &PathBuf) -> Result<ProjectInfo, String> {
@@ -86,6 +89,7 @@ fn info(tab: &str, root: &PathBuf) -> Result<ProjectInfo, String> {
         notes: Notes::new(&project.root).read(),
         build: project.build_command(&config),
         test: project.test_command(&config),
+        feed: Conversation::read_feed(&project.root),
         config,
     })
 }
@@ -157,7 +161,7 @@ fn start_task(app: AppHandle, state: State<AppState>, tab: String, prompt: Strin
 fn start_fix(app: AppHandle, state: State<AppState>, tab: String, options: Overrides) -> Result<(), String> {
     let agent = agent_for(&app, &state, &tab, Some(options))?;
     spawn(&state, &tab, async move {
-        match agent.fix().await {
+        match agent.fix_turn("Corrige le build").await {
             Ok(out) => {
                 let summary = if out.ok { "build OK".into() } else { format!("{} erreur(s) restantes", out.remaining.len()) };
                 emit_done(&agent, out.ok, summary);
@@ -247,6 +251,34 @@ async fn status(state: State<'_, AppState>, tab: Option<String>) -> Result<Statu
     Ok(Status { local_ok, local_detail, api_key: Config::api_key().is_some() })
 }
 
+fn root_of(state: &AppState, tab: &str) -> Result<PathBuf, String> {
+    Ok(state.tabs.lock().unwrap().get(tab).ok_or("onglet inconnu")?.root.clone())
+}
+
+#[tauri::command]
+fn save_feed(state: State<AppState>, tab: String, feed: serde_json::Value) -> Result<(), String> {
+    Conversation::write_feed(&root_of(&state, &tab)?, &feed).map_err(err)
+}
+
+/// Archive la conversation en cours ; l'agent repart sans mémoire.
+#[tauri::command]
+fn new_conversation(state: State<AppState>, tab: String) -> Result<(), String> {
+    Conversation::archive_current(&root_of(&state, &tab)?).map_err(err)
+}
+
+#[tauri::command]
+fn list_conversations(state: State<AppState>, tab: String) -> Result<Vec<ConversationInfo>, String> {
+    Ok(Conversation::list(&root_of(&state, &tab)?))
+}
+
+/// Reprend une conversation archivée ; renvoie son fil.
+#[tauri::command]
+fn restore_conversation(state: State<AppState>, tab: String, id: String) -> Result<serde_json::Value, String> {
+    let root = root_of(&state, &tab)?;
+    Conversation::restore(&root, &id).map_err(err)?;
+    Ok(Conversation::read_feed(&root))
+}
+
 #[derive(Serialize)]
 struct Settings {
     /// Réglages globaux (ceux de l'écran Réglages).
@@ -315,7 +347,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            get_settings, save_settings, detect_setup, probe_server, pull_model, startup_paths, open_project, new_project, refresh, start_task, start_fix, cancel, answer, undo, terminal, status, save_config
+            save_feed, new_conversation, list_conversations, restore_conversation, get_settings, save_settings, detect_setup, probe_server, pull_model, startup_paths, open_project, new_project, refresh, start_task, start_fix, cancel, answer, undo, terminal, status, save_config
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de Digital Arms");

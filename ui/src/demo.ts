@@ -22,17 +22,17 @@ const projects: Record<string, ProjectInfo> = {
   "moteur-rust": {
     tab: "moteur-rust", name: "moteur-rust", root: "~/projets/moteur-rust", lang: "rust", lang_name: "Rust", lang_label: "rs", test: "cargo test",
     files: ["src/main.rs", "src/config.rs", "src/parser.rs", "src/net/client.rs", "tests/config.rs", "Cargo.toml", "NOTES.md"],
-    notes: NOTES, config, build: "cargo build --message-format=json",
+    notes: NOTES, config, build: "cargo build --message-format=json", feed: null,
   },
   "sim-cpp": {
     tab: "sim-cpp", name: "sim-cpp", root: "~/projets/sim-cpp", lang: "cpp", lang_name: "C/C++ (CMake)", lang_label: "cpp", test: null,
     files: ["src/main.cpp", "src/body.hpp", "src/body.cpp", "CMakeLists.txt", "NOTES.md"],
-    notes: "# Notes du projet\n\n## Commandes\n- Build : `cmake --build build`\n", config, build: "cmake --build build",
+    notes: "# Notes du projet\n\n## Commandes\n- Build : `cmake --build build`\n", config, build: "cmake --build build", feed: null,
   },
   "vision-py": {
     tab: "vision-py", name: "vision-py", root: "~/projets/vision-py", lang: "python", lang_name: "Python", lang_label: "py", test: "pytest -x -q",
     files: ["src/vision/__init__.py", "src/vision/detect.py", "tests/test_detect.py", "pyproject.toml", "NOTES.md"],
-    notes: "# Notes du projet\n\n## Commandes\n- Tests : `pytest -x -q`\n", config, build: "python3 -m compileall -q .",
+    notes: "# Notes du projet\n\n## Commandes\n- Tests : `pytest -x -q`\n", config, build: "python3 -m compileall -q .", feed: null,
   },
 };
 
@@ -114,7 +114,7 @@ export function demoBackend(): Backend {
     openProject: async (path) => projects[path] ?? projects["moteur-rust"],
     pickAndOpen: async () => projects["vision-py"],
     newProject: async (_parent, name, lang) => ({
-      info: { ...projects["moteur-rust"], tab: name, name, lang: lang.toLowerCase(), lang_name: lang, lang_label: lang.slice(0, 3).toLowerCase(), files: ["NOTES.md"], build: null, test: null },
+      info: { ...projects["moteur-rust"], tab: name, name, lang: lang.toLowerCase(), lang_name: lang, lang_label: lang.slice(0, 3).toLowerCase(), files: ["NOTES.md"], build: null, test: null, feed: null },
       bootstrap: `Crée le squelette minimal d'un projet ${lang} nommé « ${name} »…`,
     }),
     pickFolder: async () => "~/projets",
@@ -133,6 +133,17 @@ export function demoBackend(): Backend {
       return true;
     },
     startupPaths: async () => [],
+    saveFeed: async () => {},
+    newConversation: async () => {},
+    listConversations: async () => [
+      { id: "1761130000-000", title: "Ajoute la lecture du fichier de config TOML", started: 1761130000, turns: 4 },
+      { id: "1761040000-000", title: "Pourquoi le test parse_retries échoue ?", started: 1761040000, turns: 2 },
+    ],
+    restoreConversation: async () => [
+      { kind: "user", text: "Ajoute la lecture du fichier de config TOML" },
+      { kind: "text", text: "C'est fait : `Config::load` lit `config.toml` avec `toml::from_str`." },
+      { kind: "notice", tone: "ok", text: "build OK" },
+    ],
     getSettings: async () => ({ config, api_key: null, first_run: window.location.hash === "#premier", config_path: "~/.config/digital-arms/config.toml" }),
     saveSettings: async (c) => void Object.assign(config, c),
     detectSetup: async () => ({

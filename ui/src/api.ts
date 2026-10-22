@@ -1,7 +1,7 @@
 // Pont vers le backend Rust. Hors de Tauri (navigateur, `npm run dev`), un
 // backend de démonstration rejoue un scénario pour travailler l'interface.
 
-import type { AgentEvent, ApprovalRequest, Config, Decision, NewProject, Options, Probe, ProjectInfo, PullProgress, Settings, Setup, Status } from "./types";
+import type { AgentEvent, ApprovalRequest, Config, ConversationInfo, Decision, NewProject, Options, Probe, ProjectInfo, PullProgress, Settings, Setup, Status } from "./types";
 import { demoBackend } from "./demo";
 
 export interface Backend {
@@ -19,6 +19,11 @@ export interface Backend {
   terminal(tab: string, command: string): Promise<boolean>;
   status(tab: string | null): Promise<Status>;
   startupPaths(): Promise<string[]>;
+  saveFeed(tab: string, feed: unknown): Promise<void>;
+  newConversation(tab: string): Promise<void>;
+  listConversations(tab: string): Promise<ConversationInfo[]>;
+  /** Reprend une conversation archivée ; renvoie son fil. */
+  restoreConversation(tab: string, id: string): Promise<unknown>;
   getSettings(): Promise<Settings>;
   /** `apiKey` : `null` = inchangée, `""` = supprimée. */
   saveSettings(config: Config, apiKey: string | null): Promise<void>;
@@ -58,6 +63,10 @@ async function tauriBackend(): Promise<Backend> {
     terminal: (tab, command) => invoke("terminal", { tab, command }),
     status: (tab) => invoke("status", { tab }),
     startupPaths: () => invoke("startup_paths"),
+    saveFeed: (tab, feed) => invoke("save_feed", { tab, feed }),
+    newConversation: (tab) => invoke("new_conversation", { tab }),
+    listConversations: (tab) => invoke("list_conversations", { tab }),
+    restoreConversation: (tab, id) => invoke("restore_conversation", { tab, id }),
     getSettings: () => invoke("get_settings"),
     saveSettings: (config, apiKey) => invoke("save_settings", { config, apiKey }),
     detectSetup: (baseUrl) => invoke("detect_setup", { baseUrl }),

@@ -21,7 +21,19 @@ et peut passer à l'API Claude quand le local tourne en rond.
 - **Mémoire** : `NOTES.md` (conventions lues à chaque tâche, enrichies par l'agent) et
   `.digital-arms/fixes.jsonl` (erreur → correctif qui a marché, réinjecté sur les erreurs semblables).
 
-## Démarrer
+## Installer
+
+Télécharge l'installateur dans l'onglet **Releases** du dépôt (Windows `.exe`/`.msi`,
+Linux `.deb`/`.AppImage`, macOS `.dmg`), puis installe un modèle local :
+
+```bash
+ollama pull qwen2.5-coder:14b
+```
+
+Publier une nouvelle version : `git tag v0.2.0 && git push origin v0.2.0` — GitHub Actions
+construit les installateurs et crée la Release.
+
+## Compiler depuis les sources
 
 Prérequis : Rust stable, Node 20+, et pour l'app de bureau les dépendances système de
 [Tauri 2](https://v2.tauri.app/start/prerequisites/) (WebView2 sous Windows, rien sous macOS,

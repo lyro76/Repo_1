@@ -30,8 +30,9 @@ Linux `.deb`/`.AppImage`, macOS `.dmg`), puis installe un modèle local :
 ollama pull qwen2.5-coder:14b
 ```
 
-Publier une nouvelle version : `git tag v0.2.0 && git push origin v0.2.0` — GitHub Actions
-construit les installateurs et crée la Release.
+Publier une nouvelle version : changer `"version"` dans `src-tauri/tauri.conf.json` (et dans
+`Cargo.toml`), pousser sur `digital-arms` — GitHub Actions construit les installateurs et crée
+la Release `vX.Y.Z`.
 
 ## Compiler depuis les sources
 

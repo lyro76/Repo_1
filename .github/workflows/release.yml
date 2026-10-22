@@ -1,10 +1,16 @@
-# Construit les installateurs et les publie dans une Release GitHub.
-# Déclenchement : pousser un tag de version (git tag v0.2.0 && git push origin v0.2.0).
+# Construit les installateurs et les publie dans une Release GitHub « vX.Y.Z ».
+# Déclenchement : changer "version" dans src-tauri/tauri.conf.json et pousser sur
+# la branche digital-arms (ou lancer le workflow à la main depuis l'onglet Actions).
+# Le tag est créé par tauri-action à partir de la version.
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: ["digital-arms"]
+    paths:
+      - "src-tauri/tauri.conf.json"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -49,8 +55,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tauriScript: tauri
-          tagName: ${{ github.ref_name }}
-          releaseName: Digital Arms ${{ github.ref_name }}
+          tagName: v__VERSION__
+          releaseName: Digital Arms v__VERSION__
           releaseBody: |
             Installateurs de Digital Arms.
 

@@ -15,6 +15,7 @@ pub mod llm;
 pub mod memory;
 pub mod permissions;
 pub mod project;
+pub mod setup;
 pub mod tools;
 
 pub use agent::Agent;

@@ -1,6 +1,8 @@
 import { backend, type Backend } from "./api";
 import { DEMO_PROMPT, DEMO_TABS } from "./demo";
-import type { AgentEvent, ApprovalRequest, Decision, Diagnostic, Mode, Options, ProjectInfo, Status } from "./types";
+import { $, h } from "./dom";
+import { openSettings } from "./settings";
+import type { AgentEvent, ApprovalRequest, Config, Decision, Diagnostic, Mode, Options, ProjectInfo, Status } from "./types";
 
 // ---------- état ----------
 
@@ -45,21 +47,12 @@ const state = {
   autoFix: true,
   confirmWrites: false,
   status: null as Status | null,
+  /** Réglages globaux, pour l'affichage quand aucun projet n'est ouvert. */
+  defaults: null as Config | null,
   calls: { local: 0, api: 0 },
 };
 
-const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const cur = () => (state.active ? state.tabs.get(state.active) ?? null : null);
-
-function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, string | boolean | undefined> = {}, ...children: (Node | string | null | undefined | false)[]) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v === undefined || v === false) continue;
-    el.setAttribute(k, v === true ? "" : v);
-  }
-  for (const c of children) if (c !== null && c !== undefined && c !== false) el.append(c);
-  return el;
-}
 
 /** Texte avec `code` en ligne, sans HTML. */
 function rich(text: string): DocumentFragment {
@@ -123,7 +116,7 @@ function renderTree() {
     .split("\n")
     .filter((l) => l.trim().startsWith("- "))
     .map((l) => h("div", { class: "note" }, "· ", rich(l.trim().slice(2))));
-  $("notes").replaceChildren(...(bullets.length ? bullets : [h("div", { class: "muted" }, "NOTES.md vide")]));
+  $("notes").replaceChildren(...(bullets.length ? bullets : [h("div", { class: "note muted" }, t ? "NOTES.md vide" : "—")]));
 }
 
 function renderFeed() {
@@ -275,7 +268,7 @@ function renderTerminal() {
 function renderStatus() {
   const t = cur();
   const s = state.status;
-  const cfg = t?.info.config;
+  const cfg = t?.info.config ?? state.defaults;
   const local = cfg?.local.model ?? "—";
   $("model-label").textContent = state.mode === "api" ? `${cfg?.api.model ?? "api"} · api` : `${local} · local`;
   const lastBuild = t?.build;
@@ -456,6 +449,29 @@ function syncChips() {
   $("opt-confirm").setAttribute("aria-pressed", String(state.confirmWrites));
 }
 
+/** Après un changement de réglages : modèle, mode et état du serveur à jour. */
+async function afterSettings() {
+  const s = await api.getSettings();
+  state.defaults = s.config;
+  if (!state.active) state.mode = s.config.mode;
+  for (const t of state.tabs.values()) {
+    try {
+      t.info = { ...(await api.refresh(t.info.tab)) };
+    } catch {
+      t.info.config = { ...t.info.config, ...s.config };
+    }
+  }
+  const t = cur();
+  if (t) {
+    state.mode = t.info.config.mode;
+    state.autoFix = t.info.config.auto_fix;
+    state.confirmWrites = t.info.config.confirm_writes;
+    syncChips();
+  }
+  state.status = await api.status(state.active);
+  render();
+}
+
 // ---------- branchements ----------
 
 async function main() {
@@ -517,6 +533,10 @@ async function main() {
     renderTerminal();
   };
 
+  $("open-settings").onclick = async () => {
+    if (await openSettings(api)) await afterSettings();
+  };
+
   const dialog = $<HTMLDialogElement>("new-dialog");
   $("add-tab").onclick = () => dialog.showModal();
   $("open-existing").onclick = async () => {
@@ -545,6 +565,16 @@ async function main() {
     } catch (e) {
       alert(String(e));
     }
+  });
+
+  // Premier lancement : l'assistant avant tout le reste.
+  const settings = await api.getSettings();
+  state.defaults = settings.config;
+  state.mode = settings.config.mode;
+  if (settings.first_run && (await openSettings(api, { welcome: true }))) await afterSettings();
+  void api.status(null).then((st) => {
+    if (!state.status) state.status = st;
+    renderStatus();
   });
 
   if (api.demo) {

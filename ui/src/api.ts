@@ -1,7 +1,7 @@
 // Pont vers le backend Rust. Hors de Tauri (navigateur, `npm run dev`), un
 // backend de démonstration rejoue un scénario pour travailler l'interface.
 
-import type { AgentEvent, ApprovalRequest, Decision, NewProject, Options, ProjectInfo, Status } from "./types";
+import type { AgentEvent, ApprovalRequest, Config, Decision, NewProject, Options, Probe, ProjectInfo, PullProgress, Settings, Setup, Status } from "./types";
 import { demoBackend } from "./demo";
 
 export interface Backend {
@@ -19,6 +19,13 @@ export interface Backend {
   terminal(tab: string, command: string): Promise<boolean>;
   status(tab: string | null): Promise<Status>;
   startupPaths(): Promise<string[]>;
+  getSettings(): Promise<Settings>;
+  /** `apiKey` : `null` = inchangée, `""` = supprimée. */
+  saveSettings(config: Config, apiKey: string | null): Promise<void>;
+  detectSetup(baseUrl: string): Promise<Setup>;
+  probeServer(baseUrl: string): Promise<Probe>;
+  pullModel(baseUrl: string, model: string): Promise<void>;
+  onPull(cb: (p: PullProgress) => void): void;
   onEvent(cb: (tab: string, e: AgentEvent) => void): void;
   onApproval(cb: (tab: string, r: ApprovalRequest) => void): void;
 }
@@ -51,6 +58,14 @@ async function tauriBackend(): Promise<Backend> {
     terminal: (tab, command) => invoke("terminal", { tab, command }),
     status: (tab) => invoke("status", { tab }),
     startupPaths: () => invoke("startup_paths"),
+    getSettings: () => invoke("get_settings"),
+    saveSettings: (config, apiKey) => invoke("save_settings", { config, apiKey }),
+    detectSetup: (baseUrl) => invoke("detect_setup", { baseUrl }),
+    probeServer: (baseUrl) => invoke("probe_server", { baseUrl }),
+    pullModel: (baseUrl, model) => invoke("pull_model", { baseUrl, model }),
+    onPull: (cb) => {
+      listen<PullProgress>("pull", ({ payload }) => cb(payload));
+    },
     onEvent: (cb) => {
       listen<AgentEvent & { tab: string }>("agent", ({ payload }) => {
         const { tab, ...e } = payload;

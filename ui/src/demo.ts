@@ -2,7 +2,7 @@
 // Rejoue le scénario de la maquette : build cassé, correctif local, demande de dépendance.
 
 import type { Backend } from "./api";
-import type { AgentEvent, ApprovalRequest, Config, ProjectInfo } from "./types";
+import type { AgentEvent, ApprovalRequest, Config, ProjectInfo, PullProgress } from "./types";
 
 const config: Config = {
   mode: "auto",
@@ -96,6 +96,8 @@ const secondHalf: Step[] = [
 ];
 
 export function demoBackend(): Backend {
+  let onPull: (p: PullProgress) => void = () => {};
+  const installed = ["qwen2.5-coder:7b"];
   let onEvent: (tab: string, e: AgentEvent) => void = () => {};
   let onApproval: (tab: string, r: ApprovalRequest) => void = () => {};
 
@@ -131,6 +133,29 @@ export function demoBackend(): Backend {
       return true;
     },
     startupPaths: async () => [],
+    getSettings: async () => ({ config, api_key: null, first_run: window.location.hash === "#premier", config_path: "~/.config/digital-arms/config.toml" }),
+    saveSettings: async (c) => void Object.assign(config, c),
+    detectSetup: async () => ({
+      gpu: { name: "NVIDIA GeForce RTX 3080", vram_mb: 10240 },
+      ollama_installed: true,
+      probe: { reachable: true, ollama: true, models: [...installed], error: null },
+      recommendation: {
+        model: "qwen2.5-coder:14b",
+        why: "10 Go de VRAM : un 14B (≈ 9 Go en Q4) tient en mémoire vidéo. Plus lent qu'un 7B, mais nettement meilleur pour corriger.",
+        alternatives: ["qwen2.5-coder:7b", "qwen2.5-coder:14b"],
+      },
+    }),
+    probeServer: async () => ({ reachable: true, ollama: true, models: [...installed], error: null }),
+    pullModel: async (_url, model) => {
+      const total = 9_000_000_000;
+      for (let done = 0; done <= total; done += total / 20) {
+        await new Promise((r) => setTimeout(r, 120));
+        onPull({ status: `pulling ${model}`, completed: done, total });
+      }
+      installed.push(model);
+      onPull({ status: "success", completed: total, total });
+    },
+    onPull: (cb) => void (onPull = cb),
     status: async () => ({ local_ok: true, local_detail: "qwen2.5-coder:14b", api_key: true }),
     onEvent: (cb) => void (onEvent = cb),
     onApproval: (cb) => void (onApproval = cb),

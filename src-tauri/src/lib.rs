@@ -237,7 +237,7 @@ async fn status(state: State<'_, AppState>, tab: Option<String>) -> Result<Statu
     let root = tab.and_then(|t| state.tabs.lock().unwrap().get(&t).map(|t| t.root.clone()));
     let cfg = match root {
         Some(r) => Config::load(&r).map_err(err)?,
-        None => Config::default(),
+        None => Config::load_global().map_err(err)?,
     };
     let (local_ok, local_detail) = match OpenAiCompat::new(cfg.local.clone()).health().await {
         Ok(models) if models.iter().any(|m| m == &cfg.local.model) => (true, cfg.local.model.clone()),
@@ -245,6 +245,56 @@ async fn status(state: State<'_, AppState>, tab: Option<String>) -> Result<Statu
         Err(_) => (false, "serveur local injoignable".into()),
     };
     Ok(Status { local_ok, local_detail, api_key: Config::api_key().is_some() })
+}
+
+#[derive(Serialize)]
+struct Settings {
+    /// Réglages globaux (ceux de l'écran Réglages).
+    config: Config,
+    /// D'où vient la clé API : `env`, `settings`, ou absente.
+    api_key: Option<da_core::config::KeySource>,
+    first_run: bool,
+    config_path: String,
+}
+
+#[tauri::command]
+fn get_settings() -> Result<Settings, String> {
+    Ok(Settings {
+        config: Config::load_global().map_err(err)?,
+        api_key: Config::api_key_source().map(|(_, src)| src),
+        first_run: Config::first_run(),
+        config_path: Config::global_path().map(|p| p.display().to_string()).unwrap_or_default(),
+    })
+}
+
+/// `api_key` : `None` = inchangée, `""` = supprimée.
+#[tauri::command]
+fn save_settings(config: Config, api_key: Option<String>) -> Result<(), String> {
+    config.save_global().map_err(err)?;
+    if let Some(k) = api_key {
+        Config::set_api_key(Some(k.as_str()).filter(|k| !k.trim().is_empty())).map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn detect_setup(base_url: String) -> Result<da_core::setup::Setup, String> {
+    Ok(da_core::setup::detect(&base_url).await)
+}
+
+#[tauri::command]
+async fn probe_server(base_url: String) -> Result<da_core::setup::Probe, String> {
+    Ok(da_core::setup::probe(&base_url).await)
+}
+
+/// Télécharge un modèle Ollama ; la progression part sur l'événement `pull`.
+#[tauri::command]
+async fn pull_model(app: AppHandle, base_url: String, model: String) -> Result<(), String> {
+    da_core::setup::pull(&base_url, &model, |p| {
+        let _ = app.emit("pull", &p);
+    })
+    .await
+    .map_err(err)
 }
 
 #[tauri::command]
@@ -265,7 +315,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
-            startup_paths, open_project, new_project, refresh, start_task, start_fix, cancel, answer, undo, terminal, status, save_config
+            get_settings, save_settings, detect_setup, probe_server, pull_model, startup_paths, open_project, new_project, refresh, start_task, start_fix, cancel, answer, undo, terminal, status, save_config
         ])
         .run(tauri::generate_context!())
         .expect("erreur au lancement de Digital Arms");

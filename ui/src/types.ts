@@ -86,3 +86,31 @@ export interface Options {
   auto_fix: boolean;
   confirm_writes: boolean;
 }
+
+export interface Settings {
+  config: Config;
+  /** Origine de la clé API : variable d'environnement, réglages, ou absente. */
+  api_key: "env" | "settings" | null;
+  first_run: boolean;
+  config_path: string;
+}
+
+export interface Probe {
+  reachable: boolean;
+  ollama: boolean;
+  models: string[];
+  error: string | null;
+}
+
+export interface Setup {
+  gpu: { name: string; vram_mb: number } | null;
+  ollama_installed: boolean;
+  probe: Probe;
+  recommendation: { model: string; why: string; alternatives: string[] };
+}
+
+export interface PullProgress {
+  status: string;
+  completed: number;
+  total: number;
+}

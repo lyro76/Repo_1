@@ -14,11 +14,13 @@ export interface Machine {
   notes: string[];
 }
 
+export type Task = "i2v" | "t2v" | "t2i" | "i2i";
+
 export interface ModelInfo {
   id: string;
   name: string;
   path: string;
-  backend: "ltx2" | "wan" | "comfy" | "mock";
+  backend: "ltx2" | "wan" | "sd" | "comfy" | "mock";
   family: string;
   format: string;
   size_gb: number;
@@ -26,10 +28,13 @@ export interface ModelInfo {
   distilled: boolean;
   supported: boolean;
   note: string;
+  kind: "video" | "image";
+  tasks: Task[];
 }
 
 export interface JobSpec {
   model: string;
+  task: Task;
   image: string;
   prompt: string;
   negative_prompt: string;
@@ -41,6 +46,7 @@ export interface JobSpec {
   guidance: number | null;
   seed: number | null;
   audio: boolean;
+  strength: number;
   mode: "draft" | "final";
   memory: "auto" | "gpu" | "cpu_offload" | "group_offload";
   compile: boolean;
@@ -58,6 +64,8 @@ export interface Timings {
 }
 
 export interface Done {
+  kind: "video" | "image";
+  task: Task;
   path: string;
   raw_path: string;
   frames: number;
@@ -81,7 +89,9 @@ export type EngineEvent =
   | { event: "log"; id?: number; text: string }
   | ({ event: "done"; id: number } & Done)
   | { event: "cancelled"; id: number }
+  | { event: "loaded"; id?: number; model: ModelInfo }
   | { event: "unloaded"; id: number }
+  | { event: "policy"; id?: number; auto_load: boolean }
   | { event: "error"; id?: number; message: string; trace?: string }
   | { event: "exited" };
 

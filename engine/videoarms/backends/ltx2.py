@@ -1,4 +1,4 @@
-"""LTX-2 / 2.3 (format diffusers) : image → vidéo avec audio.
+"""LTX-2 / 2.3 (format diffusers) : image → vidéo ou prompt → vidéo, avec audio.
 
 Réglages par défaut :
 - modèle distillé : 8 étapes, sans guidage (guidance 1, STG 0) ;
@@ -29,16 +29,24 @@ class Ltx2Backend(Backend):
         guidance = job.guidance if job.guidance is not None else (1.0 if self.distilled else 3.0)
         return steps, guidance
 
+    def warm(self, em: Emitter) -> None:
+        job = Job(model="", prompt="", task="i2v", width=1280, height=720)
+        steps, _ = self.defaults(job)
+        plan = memory.plan("auto", self._size_gb(), self.machine.vram_mb, self.machine.ram_free_mb, 1280, 720, steps)
+        self.load(plan, job, em, Timings())
+
     def load(self, plan: memory.Plan, job: Job, em: Emitter, t: Timings) -> None:
         key = f"{plan.strategy}|{job.sage}|{job.compile}"
         if self.pipe is not None and self.loaded_key == key:
             return
         self.unload()
-        import torch
-        from diffusers import LTX2ImageToVideoPipeline
+        from diffusers import LTX2ImageToVideoPipeline, LTX2Pipeline
 
         with Stage(em, "load", t, model=self.model_path, strategy=plan.strategy):
+            # Le pipeline image→vidéo contient tout ; le texte→vidéo partage ses composants.
             self.pipe = LTX2ImageToVideoPipeline.from_pretrained(self.model_path, torch_dtype=tc.pick_dtype())
+            self.t2v = LTX2Pipeline(**{k: v for k, v in self.pipe.components.items() if k in LTX2Pipeline._optional_components or k in ("scheduler", "vae", "audio_vae", "text_encoder", "tokenizer", "connectors", "transformer", "vocoder")})
+            self.t2v.set_progress_bar_config(disable=True)
             self.pipe.set_progress_bar_config(disable=True)
             tc.apply_plan(self.pipe, plan, em=em)
             self.attention = tc.apply_attention(self.pipe, job.sage, em)
@@ -62,27 +70,30 @@ class Ltx2Backend(Backend):
 
             # LTX-2 : multiples de 32 ; on génère un peu plus grand et on recadre.
             gw, gh = fit_dims(job.width, job.height, 32)
-            image = Image.fromarray(load_image(job.image, gw, gh))
+            image = Image.fromarray(load_image(job.image, gw, gh)) if job.task == "i2v" else None
             gen = torch.Generator(device="cpu").manual_seed(job.seed if job.seed is not None else 0)
 
         n = job.num_frames
         kwargs = dict(
-            image=image, prompt=job.prompt, negative_prompt=job.negative_prompt,
+            prompt=job.prompt, negative_prompt=job.negative_prompt,
             width=gw, height=gh, num_frames=n, frame_rate=job.fps,
             num_inference_steps=steps, guidance_scale=guidance,
             stg_scale=0.0 if self.distilled else 1.0,
             generator=gen, output_type="np", return_dict=False,
             callback_on_step_end=tc.step_callback(em, cancel, steps, t),
         )
+        if image is not None:
+            kwargs["image"] = image
         if not job.audio:
             kwargs.update(audio_guidance_scale=None)
+        runner = pipe if image is not None else self.t2v
         # Sampling + décodage sont imbriqués dans le pipeline : on mesure le
         # sampling par les callbacks, le reste est attribué au décodage.
         import time
 
         t0 = time.perf_counter()
         with Stage(em, "sample", t, steps=steps, guidance=guidance):
-            video, audio = pipe(**kwargs)
+            video, audio = runner(**kwargs)
         total = time.perf_counter() - t0
         t.sample = round(t.seconds_per_step * steps, 3)
         t.decode = round(max(0.0, total - t.sample), 3)
@@ -108,6 +119,7 @@ class Ltx2Backend(Backend):
 
     def unload(self) -> None:
         if self.pipe is not None:
+            self.t2v = None
+            tc.release(self.pipe)
             self.pipe = None
             self.loaded_key = None
-            tc.reset_peaks()

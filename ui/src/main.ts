@@ -1,6 +1,6 @@
 import { backend, type Backend } from "./api";
 import { $, h } from "./dom";
-import type { Done, EngineEvent, JobSpec, Machine, ModelInfo, Run, Settings, Stage, Status } from "./types";
+import type { Done, EngineEvent, JobSpec, Machine, ModelInfo, Run, Settings, Stage, Status, Task } from "./types";
 
 // ---------- état ----------
 
@@ -25,6 +25,10 @@ const state = {
   engine: "off" as "off" | "starting" | "ready" | "busy" | "error",
   image: null as string | null,
   mode: "draft" as "draft" | "final",
+  kind: "video" as "video" | "image",
+  source: "image" as "image" | "prompt",
+  loaded: null as ModelInfo | null,
+  autoLoad: true,
   queue: [] as QueueItem[],
   nextId: 1,
   runs: [] as Run[],
@@ -34,6 +38,11 @@ const state = {
 
 let api: Backend;
 const cur = () => state.queue.find((q) => q.state === "running") ?? null;
+const task = (): Task => (state.kind === "video" ? (state.source === "image" ? "i2v" : "t2v") : state.source === "image" ? "i2i" : "t2i");
+const TASK_LABEL: Record<Task, string> = { i2v: "image → vidéo", t2v: "prompt → vidéo", t2i: "prompt → image", i2i: "image → image" };
+
+const RES_VIDEO = [["1280x720", "720p"], ["1920x1080", "1080p"], ["854x480", "480p"], ["custom", "Autre…"]];
+const RES_IMAGE = [["1024x1024", "1024 carré"], ["1152x896", "1152×896"], ["1344x768", "1344×768 (16:9)"], ["768x768", "768 (SD 1.5)"], ["custom", "Autre…"]];
 
 // ---------- rendu ----------
 
@@ -50,15 +59,27 @@ function renderEngineBadge() {
 function renderModels() {
   const sel = $<HTMLSelectElement>("model");
   const prev = sel.value;
+  const t = task();
+  const shown = state.models.filter((m) => m.tasks.includes(t) || (!m.supported && m.kind === state.kind));
   sel.replaceChildren(
-    ...state.models.map((m) =>
+    ...shown.map((m) =>
       h("option", { value: m.id, disabled: !m.supported || undefined }, `${m.name}${m.size_gb ? ` · ${m.size_gb} Go` : ""}${m.supported ? "" : " (bientôt)"}`),
     ),
   );
-  const usable = state.models.filter((m) => m.supported);
-  const wanted = prev || (state.settings?.ui?.model as string) || "";
+  const usable = shown.filter((m) => m.supported);
+  const remembered = (state.settings?.ui?.[`model_${state.kind}`] as string) || "";
+  const wanted = usable.some((m) => m.id === prev) ? prev : remembered;
   sel.value = usable.some((m) => m.id === wanted) ? wanted : (usable.find((m) => m.backend !== "mock")?.id ?? usable[0]?.id ?? "");
   renderModelNote();
+}
+
+function renderLoaded() {
+  $("loaded-name").textContent = state.loaded ? `chargé : ${state.loaded.name}` : "aucun modèle chargé";
+  $("loaded-name").className = state.loaded ? "small" : "muted small";
+  const busy = state.engine !== "ready";
+  $("load-btn").toggleAttribute("disabled", busy || !selectedModel() || state.loaded?.id === selectedModel()?.id);
+  $("unload-btn").toggleAttribute("disabled", busy || !state.loaded);
+  $("opt-autoload").setAttribute("aria-pressed", String(state.autoLoad));
 }
 
 function selectedModel(): ModelInfo | undefined {
@@ -69,17 +90,19 @@ function renderModelNote() {
   const m = selectedModel();
   const parts: string[] = [];
   if (m?.note) parts.push(m.note);
-  if (m && !m.audio) parts.push("ce modèle ne produit pas d'audio");
+  if (m && state.kind === "video" && !m.audio) parts.push("ce modèle ne produit pas d'audio");
   if (m?.distilled) parts.push("distillé : peu d'étapes, rapide");
   $("model-note").textContent = parts.join(" · ");
   $("opt-audio").toggleAttribute("disabled", !!m && !m.audio);
+  $("opt-audio").hidden = state.kind === "image";
+  renderLoaded();
   renderEstimate();
 }
 
 function renderStages() {
   const q = cur() ?? state.lastDone;
   const box = $("stages");
-  $("job-title").textContent = q ? `#${q.id} · ${q.job.width}×${q.job.height} · ${q.job.seconds} s · ${q.job.mode === "draft" ? "brouillon" : "final"}` : "";
+  $("job-title").textContent = q ? `#${q.id} · ${TASK_LABEL[q.job.task]} · ${q.job.width}×${q.job.height}${q.job.task.endsWith("v") ? ` · ${q.job.seconds} s` : ""} · ${q.job.mode === "draft" ? "brouillon" : "final"}` : "";
   $("cancel").hidden = !cur();
   if (!q) {
     box.replaceChildren(h("div", { class: "muted small empty" }, "Choisis une image, décris le mouvement, puis Générer."));
@@ -108,7 +131,7 @@ function renderQueue() {
   $("queue").replaceChildren(
     ...items.map((q) => {
       const label = { waiting: "en attente", running: "en cours", done: "terminé", error: "échec", cancelled: "annulé" }[q.state];
-      const row = h("div", { class: `qitem ${q.state}` }, h("span", { class: "mono" }, `#${q.id}`), h("span", { class: "qp" }, q.job.prompt || "(sans prompt)"), h("span", { class: "muted small" }, `${q.job.width}×${q.job.height} · ${q.job.seconds} s`), h("span", { class: `qs ${q.state}` }, label));
+      const row = h("div", { class: `qitem ${q.state}` }, h("span", { class: "mono" }, `#${q.id}`), h("span", { class: "qp" }, q.job.prompt || "(sans prompt)"), h("span", { class: "muted small" }, `${TASK_LABEL[q.job.task]} · ${q.job.width}×${q.job.height}${q.job.task.endsWith("v") ? ` · ${q.job.seconds} s` : ""}`), h("span", { class: `qs ${q.state}` }, label));
       if (q.state === "error") row.append(h("div", { class: "err small" }, q.error ?? ""));
       if (q.state === "waiting") {
         const b = h("button", { class: "link small" }, "retirer");
@@ -141,17 +164,17 @@ function renderResult() {
     return;
   }
   const d = q.done;
-  const v = h("video", { controls: true, src: `${api.fileUrl(d.path)}?t=${Date.now()}`, preload: "metadata" }) as HTMLVideoElement;
-  player.replaceChildren(v);
+  const url = `${api.fileUrl(d.path)}?t=${Date.now()}`;
+  player.replaceChildren(d.kind === "image" ? h("img", { src: url, alt: "" }) : h("video", { controls: true, src: url, preload: "metadata" }));
   const t = d.timings;
   const rows: [string, string][] = [
     ["Fichier", d.path.split(/[\\/]/).pop() ?? d.path],
-    ["Vidéo", `${d.width}×${d.height} · ${d.frames} images · ${d.fps} i/s${d.audio ? " · audio" : ""}`],
+    [d.kind === "image" ? "Image" : "Vidéo", d.kind === "image" ? `${d.width}×${d.height}` : `${d.width}×${d.height} · ${d.frames} images · ${d.fps} i/s${d.audio ? " · audio" : ""}`],
     ["Temps total", fmt(t.total)],
     ["Sampling", `${fmt(t.sample)} (${t.seconds_per_step.toFixed(2).replace(".", ",")} s/pas × ${d.settings.steps ?? "?"})`],
     ["VAE", fmt(t.decode)],
     ["Mémoire", `${d.memory?.label ?? d.memory?.strategy ?? "—"} · pic VRAM ${gb(d.vram_peak_mb)}${d.ram_peak_mb ? ` · RAM ${gb(d.ram_peak_mb)}` : ""}`],
-    ["Réglages", `graine ${d.settings.seed} · guidage ${d.settings.guidance}${d.settings.attention ? ` · attention ${d.settings.attention}` : ""}${d.settings.compiled ? " · compilé" : ""}`],
+    ["Réglages", `graine ${d.settings.seed} · guidage ${d.settings.guidance}${d.settings.strength != null ? ` · liberté ${d.settings.strength}` : ""}${d.settings.attention ? ` · attention ${d.settings.attention}` : ""}${d.settings.compiled ? " · compilé" : ""}`],
   ];
   $("result-info").replaceChildren(...rows.map(([k, v]) => h("div", { class: "irow" }, h("span", { class: "k" }, k), h("span", {}, v))));
 }
@@ -170,7 +193,7 @@ function renderHistory() {
       const row = h(
         "div",
         { class: "hrow" },
-        h("div", { class: "htop" }, h("span", { class: "hname" }, `${r.done.model.family} · ${r.job.width}×${r.job.height} · ${r.job.seconds} s`), h("span", { class: "mono small" }, fmt(t.total)), h("span", { class: "muted small" }, `VRAM ${gb(r.done.vram_peak_mb)}`)),
+        h("div", { class: "htop" }, h("span", { class: "hname" }, `${r.done.model.family} · ${TASK_LABEL[r.job.task]} · ${r.job.width}×${r.job.height}${r.job.task.endsWith("v") ? ` · ${r.job.seconds} s` : ""}`), h("span", { class: "mono small" }, fmt(t.total)), h("span", { class: "muted small" }, `VRAM ${gb(r.done.vram_peak_mb)}`)),
         h("div", { class: "hbar" }, seg("load", "s-load"), seg("encode", "s-encode"), seg("sample", "s-sample"), seg("decode", "s-decode"), seg("write", "s-write"), seg("post", "s-post")),
         h("div", { class: "muted small" }, `${r.done.memory?.strategy ?? ""}${r.done.settings.attention ? ` · ${r.done.settings.attention}` : ""}${r.done.settings.compiled ? " · compilé" : ""} · ${new Date(r.at).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`),
       );
@@ -200,10 +223,11 @@ function renderEstimate() {
   const el = $("estimate");
   if (!m) return void (el.textContent = "");
   // Estimation à partir de l'historique : s/pas du même modèle, mis à l'échelle en pixels × images.
-  const same = state.runs.filter((r) => r.done.model.id === m.id && r.done.timings.seconds_per_step > 0);
+  const same = state.runs.filter((r) => r.done.model.id === m.id && r.done.timings.seconds_per_step > 0 && r.job.task.endsWith("v") === (state.kind === "video"));
   if (!same.length) return void (el.textContent = m.backend === "mock" ? "" : "pas encore d'historique pour estimer le temps");
   const ref = same[0];
-  const scale = (width * height * seconds) / (ref.job.width * ref.job.height * ref.job.seconds);
+  const secs = (j: { seconds: number; task: Task }) => (j.task.endsWith("v") ? j.seconds : 1);
+  const scale = (width * height * secs({ seconds, task: task() })) / (ref.job.width * ref.job.height * secs(ref.job));
   const steps = Number($<HTMLInputElement>("steps").value) || (ref.done.settings.steps as number) || 8;
   const est = ref.done.timings.seconds_per_step * scale * steps + ref.done.timings.decode * scale + ref.done.timings.load * 0.3;
   el.textContent = `≈ ${fmt(est)} d'après l'historique`;
@@ -211,6 +235,7 @@ function renderEstimate() {
 
 function render() {
   renderEngineBadge();
+  renderLoaded();
   renderStages();
   renderQueue();
   renderResult();
@@ -233,9 +258,10 @@ function readDims() {
     [width, height] = o === "p" ? [hh, w] : o === "s" ? [hh, hh] : [w, hh];
   }
   if (state.mode === "draft" && res !== "custom") {
-    // Brouillon : moitié de la cible, arrondie à 32.
-    width = Math.max(256, Math.round(width / 2 / 32) * 32);
-    height = Math.max(256, Math.round(height / 2 / 32) * 32);
+    // Brouillon : moitié de la cible, arrondie à 32 (vidéo) ou 64 (image).
+    const step = state.kind === "video" ? 32 : 64;
+    width = Math.max(256, Math.round(width / 2 / step) * step);
+    height = Math.max(256, Math.round(height / 2 / step) * step);
   }
   const seconds = Math.min(20, Math.max(1, Number($<HTMLInputElement>("seconds").value) || 5));
   const fps = Number($<HTMLInputElement>("fps").value) || 24;
@@ -247,9 +273,11 @@ function pressed(id: string) {
 }
 
 function buildJob(): JobSpec | string {
-  if (!state.image) return "choisis une image de départ";
+  const t = task();
+  if (state.source === "image" && !state.image) return "choisis une image de départ";
   const m = selectedModel();
-  if (!m) return "aucun modèle utilisable : ajoute un dossier de modèles dans les réglages";
+  if (!m) return `aucun modèle pour « ${TASK_LABEL[t]} » : ajoute un dossier de modèles dans les réglages`;
+  if (!$<HTMLTextAreaElement>("prompt").value.trim() && state.source === "prompt") return "écris un prompt";
   const { width, height, seconds, fps } = readDims();
   const num = (id: string) => {
     const v = $<HTMLInputElement>(id).value.trim();
@@ -265,12 +293,14 @@ function buildJob(): JobSpec | string {
   if (!seedLocked) $<HTMLInputElement>("seed").value = String(seed);
   return {
     model: m.id,
-    image: state.image,
+    task: t,
+    image: state.source === "image" ? state.image! : "",
     prompt: $<HTMLTextAreaElement>("prompt").value.trim(),
     negative_prompt: $<HTMLTextAreaElement>("negative").value.trim(),
     width, height, seconds, fps,
     steps: num("steps"), guidance: num("guidance"), seed,
     audio: pressed("opt-audio") && m.audio,
+    strength: Number($<HTMLInputElement>("strength").value) || 0.6,
     mode: state.mode,
     memory: $<HTMLSelectElement>("memory").value as JobSpec["memory"],
     compile: pressed("opt-compile"), sage: pressed("opt-sage"),
@@ -282,8 +312,14 @@ function buildJob(): JobSpec | string {
 
 /** Remplit le formulaire depuis un job (historique, ou « rendu final »). */
 function applyJob(job: JobSpec) {
-  state.image = job.image;
-  showImage(job.image);
+  setKind(job.task.endsWith("v") ? "video" : "image", false);
+  setSource(job.task.startsWith("i") ? "image" : "prompt");
+  if (job.image) {
+    state.image = job.image;
+    showImage(job.image);
+  }
+  $<HTMLInputElement>("strength").value = String(job.strength ?? 0.6);
+  $("strength-val").textContent = String(job.strength ?? 0.6).replace(".", ",");
   $<HTMLTextAreaElement>("prompt").value = job.prompt;
   $<HTMLTextAreaElement>("negative").value = job.negative_prompt;
   $<HTMLSelectElement>("model").value = job.model;
@@ -318,6 +354,31 @@ function setMode(mode: "draft" | "final") {
   document.querySelectorAll<HTMLButtonElement>("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
   $("mode-hint").textContent = mode === "draft" ? "demi-résolution, pour itérer vite sur le prompt et le cadrage" : "résolution demandée, même graine : le rendu définitif";
   renderEstimate();
+}
+
+function setKind(kind: "video" | "image", refresh = true) {
+  state.kind = kind;
+  document.querySelectorAll<HTMLButtonElement>("#kind button").forEach((b) => b.classList.toggle("on", b.dataset.kind === kind));
+  const res = $<HTMLSelectElement>("res");
+  const prev = res.value;
+  const list = kind === "video" ? RES_VIDEO : RES_IMAGE;
+  res.replaceChildren(...list.map(([v, l]) => h("option", { value: v }, l)));
+  res.value = list.some(([v]) => v === prev) ? prev : list[0][0];
+  $("custom-res").hidden = res.value !== "custom";
+  $("seconds-field").hidden = kind === "image";
+  $("count-field").hidden = kind === "video";
+  $("post-fps").closest("label")!.hidden = kind === "image";
+  setSource(state.source);
+  if (refresh) renderModels();
+}
+
+function setSource(source: "image" | "prompt") {
+  state.source = source;
+  document.querySelectorAll<HTMLButtonElement>("#source button").forEach((b) => b.classList.toggle("on", b.dataset.source === source));
+  $("drop").hidden = source === "prompt";
+  $("strength-field").hidden = !(state.kind === "image" && source === "image");
+  $("model-note").textContent = "";
+  renderModels();
 }
 
 // ---------- moteur ----------
@@ -386,6 +447,7 @@ function onEngine(e: EngineEvent) {
       state.models = e.models;
       renderModels();
       renderStatus();
+      void api.send({ id: -2, cmd: "policy", auto_load: state.autoLoad });
       void pump();
       return;
     case "exited":
@@ -396,10 +458,33 @@ function onEngine(e: EngineEvent) {
     case "log":
       pushLog(e.text);
       return;
+    case "loaded":
+      state.loaded = e.model;
+      if (e.id === -1) state.engine = "ready";
+      renderLoaded();
+      renderEngineBadge();
+      return;
+    case "unloaded":
+      state.loaded = null;
+      if (e.id === -1) state.engine = "ready";
+      renderLoaded();
+      renderEngineBadge();
+      return;
+    case "policy":
+      state.autoLoad = e.auto_load;
+      renderLoaded();
+      return;
   }
   const q = state.queue.find((x) => x.id === e.id);
   if (!q) {
-    if (e.event === "error") pushLog(`erreur : ${e.message}`);
+    if (e.event === "error") {
+      pushLog(`erreur : ${e.message}`);
+      if (e.id === -1) {
+        state.engine = "ready";
+        renderEngineBadge();
+        renderLoaded();
+      }
+    }
     return;
   }
   switch (e.event) {
@@ -518,7 +603,12 @@ async function openSettings() {
 async function main() {
   api = await backend;
   state.settings = await api.getSettings();
-  state.runs = await api.listRuns(50);
+  // Historique d'anciennes versions : champs manquants complétés.
+  state.runs = (await api.listRuns(50)).map((r) => ({
+    ...r,
+    job: { task: "i2v", strength: 0.6, ...(r.job as Partial<JobSpec>) } as JobSpec,
+    done: { kind: "video", task: "i2v", ...(r.done as Partial<Done>) } as Done,
+  }));
   api.onEngine(onEngine);
   api.onEngineLog(pushLog);
   api.onSetup((l) => {
@@ -556,15 +646,42 @@ async function main() {
   }
   document.querySelectorAll<HTMLButtonElement>("#mode button").forEach((b) => (b.onclick = () => setMode(b.dataset.mode as "draft" | "final")));
   setMode("draft");
+  setKind("video", false);
 
   $("generate").onclick = async () => {
     const job = buildJob();
     if (typeof job === "string") return void pushLog(job);
-    state.queue.push({ id: state.nextId++, job, state: "waiting", stages: {} });
+    const count = state.kind === "image" ? Math.min(16, Math.max(1, Number($<HTMLInputElement>("count").value) || 1)) : 1;
+    for (let i = 0; i < count; i++) {
+      // Plusieurs images : graines consécutives, pour retrouver chacune.
+      state.queue.push({ id: state.nextId++, job: { ...job, seed: (job.seed ?? 0) + i }, state: "waiting", stages: {} });
+    }
     renderQueue();
-    state.settings!.ui = { ...(state.settings!.ui ?? {}), model: job.model, negative: job.negative_prompt };
+    state.settings!.ui = { ...(state.settings!.ui ?? {}), [`model_${state.kind}`]: job.model, negative: job.negative_prompt };
     void api.saveSettings(state.settings!);
     if (await ensureEngine()) void pump();
+  };
+  document.querySelectorAll<HTMLButtonElement>("#kind button").forEach((b) => (b.onclick = () => setKind(b.dataset.kind as "video" | "image")));
+  document.querySelectorAll<HTMLButtonElement>("#source button").forEach((b) => (b.onclick = () => setSource(b.dataset.source as "image" | "prompt")));
+  $<HTMLInputElement>("strength").oninput = () => ($("strength-val").textContent = $<HTMLInputElement>("strength").value.replace(".", ","));
+  $("load-btn").onclick = async () => {
+    const m = selectedModel();
+    if (!m || !(await ensureEngine())) return;
+    state.engine = "busy";
+    renderEngineBadge();
+    renderLoaded();
+    await api.send({ id: -1, cmd: "load", model: m.id });
+  };
+  $("unload-btn").onclick = async () => {
+    if (state.engine !== "ready") return;
+    state.engine = "busy";
+    renderEngineBadge();
+    await api.send({ id: -1, cmd: "unload" });
+  };
+  $("opt-autoload").onclick = async () => {
+    state.autoLoad = !state.autoLoad;
+    renderLoaded();
+    if (state.engine === "ready" || state.engine === "busy") await api.send({ id: -2, cmd: "policy", auto_load: state.autoLoad });
   };
   $("cancel").onclick = () => void api.send({ cmd: "cancel" });
   $("reveal").onclick = () => state.lastDone?.done && void api.revealPath(state.lastDone.done.path);

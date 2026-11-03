@@ -28,13 +28,18 @@ STAGE_LABELS = {
 }
 
 
+TASKS = ("i2v", "t2v", "t2i", "i2i")
+
+
 @dataclass
 class Job:
-    """Une demande de génération. Les valeurs par défaut sont celles d'un brouillon."""
+    """Une demande de génération. Les valeurs par défaut sont celles d'un brouillon vidéo."""
 
     model: str
-    image: str
     prompt: str
+    # i2v : image → vidéo · t2v : prompt → vidéo · t2i : prompt → image · i2i : image → image
+    task: str = "i2v"
+    image: str = ""
     negative_prompt: str = "worst quality, inconsistent motion, blurry, jittery, distorted"
     width: int = 1280
     height: int = 720
@@ -44,6 +49,8 @@ class Job:
     guidance: float | None = None
     seed: int | None = None
     audio: bool = True
+    # img2img : part du rendu qui vient du modèle (0 = l'image telle quelle, 1 = tout réinventer).
+    strength: float = 0.6
     mode: str = "draft"
     # auto | gpu | cpu_offload | group_offload
     memory: str = "auto"
@@ -53,6 +60,14 @@ class Job:
     name: str = ""
     # {"fps": 48, "upscale": 2}
     post: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def is_video(self) -> bool:
+        return self.task in ("i2v", "t2v")
+
+    @property
+    def needs_image(self) -> bool:
+        return self.task in ("i2v", "i2i")
 
     @property
     def num_frames(self) -> int:

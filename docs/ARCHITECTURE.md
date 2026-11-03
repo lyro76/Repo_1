@@ -4,7 +4,7 @@
 ui (TS) ──invoke/events──► src-tauri (Rust) ──stdin/stdout JSON──► engine (Python)
                                  │                                    ├── models     repérage (HF cache, diffusers, GGUF)
                                  │                                    ├── memory     stratégie VRAM/RAM
-                                 │                                    ├── backends   ltx2 · wan · mock
+                                 │                                    ├── backends   ltx2 · wan · sd · mock
                                  ├── python.rs  venv + pip            ├── video      ffmpeg : écriture, audio, post
                                  ├── engine.rs  processus             └── server     protocole, annulation
                                  └── settings   config.json, runs.jsonl
@@ -29,6 +29,21 @@ ni torch ni modèle : l'installateur reste petit, et le moteur se met à jour sa
 3. Étapes signalées : `load → encode → sample (progress par pas) → decode → write → post`.
 4. `done` : chemin, timings, pics VRAM/RAM, plan mémoire, réglages effectifs. L'interface
    l'enregistre dans `runs.jsonl` ; c'est l'historique et la base d'estimation.
+
+## Tâches et modèles
+
+Un `Job` porte une `task` : `i2v`, `t2v` (LTX-2 et Wan, qui partagent leurs composants entre
+les deux pipelines), `t2i`, `i2i` (Stable Diffusion XL / 1.5, dossier diffusers ou fichier
+unique via `from_single_file`, famille déduite des clés de l'en-tête safetensors). Chaque
+`ModelInfo` annonce ses `tasks` ; l'interface filtre la liste selon l'onglet et la source.
+
+## Chargement des modèles
+
+Le moteur garde un backend chargé entre deux générations (le rechargement d'un modèle de 20 Go
+coûte plus que la génération d'un brouillon). Politique `auto_load` : en auto, un job qui demande
+un autre modèle remplace le modèle chargé ; en manuel, il est refusé tant que l'utilisateur n'a
+pas déchargé (commandes `load`, `unload`, `policy` ; événements `loaded`, `unloaded`).
+Le déchargement libère réellement la VRAM (`torch_common.release`).
 
 ## Brouillon → final
 

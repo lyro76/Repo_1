@@ -11,11 +11,20 @@
     <div id="app">
       <header class="topbar">
         <div class="brand"><img src="/mark.png" alt="" /><span>Video <b>Arms</b></span></div>
+        <div id="kind" class="segmented" role="radiogroup" aria-label="Type">
+          <button data-kind="video" class="on">Vidéo</button><button data-kind="image">Image</button>
+        </div>
         <div id="mode" class="segmented" role="radiogroup" aria-label="Mode">
           <button data-mode="draft" class="on">Brouillon</button><button data-mode="final">Final</button>
         </div>
         <span id="mode-hint" class="muted small"></span>
         <div class="spacer"></div>
+        <div id="loaded" class="loaded">
+          <span id="loaded-name" class="muted small">aucun modèle chargé</span>
+          <button id="load-btn" class="head-btn" title="Charger le modèle sélectionné en mémoire">Charger</button>
+          <button id="unload-btn" class="head-btn" title="Libérer la VRAM">Décharger</button>
+          <button type="button" class="chip" id="opt-autoload" aria-pressed="true" title="Charger et remplacer les modèles automatiquement selon la tâche">Auto</button>
+        </div>
         <span id="engine-badge" class="badge"></span>
         <button id="open-settings" class="icon-btn" title="Réglages">⚙</button>
       </header>
@@ -23,6 +32,9 @@
       <aside class="left">
         <div class="pane-head"><b>Entrée</b></div>
         <div class="left-body">
+          <div id="source" class="segmented wide" role="radiogroup" aria-label="Source">
+            <button data-source="image" class="on">Depuis une image</button><button data-source="prompt">Depuis le prompt</button>
+          </div>
           <div id="drop" class="drop" tabindex="0">
             <img id="drop-img" alt="" hidden />
             <div id="drop-hint"><b>Image de départ</b><br /><span class="muted small">clique ou dépose un fichier</span></div>
@@ -36,8 +48,10 @@
               <select id="res"><option value="1280x720">720p</option><option value="1920x1080">1080p</option><option value="854x480">480p</option><option value="custom">Autre…</option></select></label>
             <label class="field"><span>Orientation</span>
               <select id="orient"><option value="l">Paysage</option><option value="p">Portrait</option><option value="s">Carré</option></select></label>
-            <label class="field"><span>Durée (s)</span><input id="seconds" type="number" min="1" max="20" step="1" value="5" /></label>
+            <label class="field" id="seconds-field"><span>Durée (s)</span><input id="seconds" type="number" min="1" max="20" step="1" value="5" /></label>
+            <label class="field" id="count-field" hidden><span>Images</span><input id="count" type="number" min="1" max="16" step="1" value="1" /></label>
           </div>
+          <label class="field" id="strength-field" hidden><span>Fidélité à l'image → liberté du modèle (<span id="strength-val">0,6</span>)</span><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.6" /></label>
           <div id="custom-res" class="grid3" hidden>
             <label class="field"><span>Largeur</span><input id="width" type="number" min="256" max="3840" step="16" value="1280" /></label>
             <label class="field"><span>Hauteur</span><input id="height" type="number" min="256" max="2160" step="16" value="720" /></label>

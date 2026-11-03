@@ -39,6 +39,25 @@ def write_video(frames: np.ndarray, path: str | Path, fps: float, audio: np.ndar
     return path
 
 
+def write_image(frame: np.ndarray, path: str | Path) -> Path:
+    """`frame` : (H, W, 3) uint8 → PNG."""
+    from PIL import Image
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(np.ascontiguousarray(frame)).save(path, optimize=True)
+    return path
+
+
+def upscale_image(src: str | Path, dst: str | Path, factor: float) -> Path:
+    from PIL import Image
+
+    im = Image.open(src)
+    im = im.resize((round(im.width * factor), round(im.height * factor)), Image.LANCZOS)
+    im.save(dst)
+    return Path(dst)
+
+
 def _write_wav(path: Path, audio: np.ndarray, rate: int) -> None:
     a = np.asarray(audio, dtype=np.float32)
     if a.ndim == 1:

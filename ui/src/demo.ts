@@ -5,10 +5,12 @@ import type { EngineEvent, ModelInfo, Run, Settings } from "./types";
 
 const machine = { gpu: "NVIDIA GeForce RTX 3080", vram_mb: 10240, driver: "610.62", ram_mb: 65536, ram_free_mb: 48000, torch: "2.9.0+cu126", cuda: true, diffusers: "0.42.1", sage: true, ffmpeg: true, notes: [] };
 const models: ModelInfo[] = [
-  { id: "ltx2:/m/ltx23", name: "diffusers/LTX-2.3-Distilled-Diffusers", path: "/m/ltx23", backend: "ltx2", family: "LTX-2", format: "diffusers", size_gb: 27.4, audio: true, distilled: true, supported: true, note: "" },
-  { id: "wan:/m/wan5b", name: "Wan-AI/Wan2.2-TI2V-5B-Diffusers", path: "/m/wan5b", backend: "wan", family: "Wan", format: "diffusers", size_gb: 21.3, audio: false, distilled: false, supported: true, note: "" },
-  { id: "comfy:/m/ltx25", name: "LTX-2.5 (LTX-2.5-Distilled-Q4_K_S.gguf)", path: "/m/ltx25", backend: "comfy", family: "LTX-2", format: "comfy", size_gb: 14.1, audio: true, distilled: true, supported: false, note: "format GGUF/ComfyUI : pas encore pris en charge par ce moteur" },
-  { id: "mock", name: "Moteur factice (test, sans GPU)", path: "", backend: "mock", family: "test", format: "mock", size_gb: 0, audio: true, distilled: true, supported: true, note: "" },
+  { id: "ltx2:/m/ltx23", name: "diffusers/LTX-2.3-Distilled-Diffusers", path: "/m/ltx23", backend: "ltx2", family: "LTX-2", format: "diffusers", size_gb: 27.4, audio: true, distilled: true, supported: true, note: "", kind: "video", tasks: ["i2v", "t2v"] },
+  { id: "wan:/m/wan5b", name: "Wan-AI/Wan2.2-TI2V-5B-Diffusers", path: "/m/wan5b", backend: "wan", family: "Wan", format: "diffusers", size_gb: 21.3, audio: false, distilled: false, supported: true, note: "", kind: "video", tasks: ["i2v", "t2v"] },
+  { id: "comfy:/m/ltx25", name: "LTX-2.5 (LTX-2.5-Distilled-Q4_K_S.gguf)", path: "/m/ltx25", backend: "comfy", family: "LTX-2", format: "comfy", size_gb: 14.1, audio: true, distilled: true, supported: false, note: "format GGUF/ComfyUI : pas encore pris en charge par ce moteur", kind: "video", tasks: [] },
+  { id: "sd:/m/realvis", name: "SG161222/RealVisXL_V5.0", path: "/m/realvis", backend: "sd", family: "SDXL", format: "diffusers", size_gb: 6.9, audio: false, distilled: false, supported: true, note: "", kind: "image", tasks: ["t2i", "i2i"] },
+  { id: "sd:/m/turbo", name: "SDXL_Turbo (SDXL)", path: "/m/turbo", backend: "sd", family: "SDXL", format: "single_file", size_gb: 6.9, audio: false, distilled: true, supported: true, note: "", kind: "image", tasks: ["t2i", "i2i"] },
+  { id: "mock", name: "Moteur factice (test, sans GPU)", path: "", backend: "mock", family: "test", format: "mock", size_gb: 0, audio: true, distilled: true, supported: true, note: "", kind: "video", tasks: ["i2v", "t2v", "t2i", "i2i"] },
 ];
 const settings: Settings = { python: "py -3.11", model_paths: ["C:\\Users\\Admin\\Documents\\SDXL_MODELS"], out_dir: "C:\\Users\\Admin\\Videos\\Video Arms", ui: null };
 const runs: Run[] = [];
@@ -45,8 +47,10 @@ export function demoBackend(): Backend {
     t.decode = await stage("decode", "décodage VAE", 900) * 9;
     t.write = await stage("write", "écriture de la vidéo", 300);
     t.post = job.post?.fps || job.post?.upscale ? await stage("post", "post-traitement", 700) : 0;
+    const isImage = job.task === "t2i" || job.task === "i2i";
+    emit({ event: "loaded", model: models.find((m) => m.id === job.model) ?? models[0] });
     emit({
-      event: "done", path: "/demo/sortie.mp4", raw_path: "/demo/sortie.mp4", frames: Math.round(job.seconds * job.fps), fps: job.fps,
+      event: "done", kind: isImage ? "image" : "video", task: job.task, path: isImage ? "/mark.png" : "/demo/sortie.mp4", raw_path: "/demo/sortie.mp4", frames: isImage ? 1 : Math.round(job.seconds * job.fps), fps: job.fps,
       width: job.width, height: job.height, audio: job.audio,
       timings: { ...t, seconds_per_step: 4.2, total: Object.values(t).reduce((a: number, b: any) => a + b, 0) },
       vram_peak_mb: 9420, ram_peak_mb: 31200, memory: { strategy: "group_offload", label: "blocs streamés depuis la RAM pendant le calcul", reason: "modèle > VRAM", vae_tiling: true },
@@ -76,6 +80,11 @@ export function demoBackend(): Backend {
         onEngine({ event: "probe", id: msg.id as number, machine, models });
       } else if (msg.cmd === "generate") void generate(msg.id as number, msg.job as any);
       else if (msg.cmd === "cancel") cancelled = true;
+      else if (msg.cmd === "load") {
+        await wait(800);
+        onEngine({ event: "loaded", id: msg.id as number, model: models.find((m) => m.id === msg.model)! });
+      } else if (msg.cmd === "unload") onEngine({ event: "unloaded", id: msg.id as number });
+      else if (msg.cmd === "policy") onEngine({ event: "policy", auto_load: msg.auto_load as boolean });
     },
     pickImage: async () => "/mark.png",
     pickFolder: async () => "C:\\Users\\Admin\\Documents\\Modeles",

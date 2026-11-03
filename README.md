@@ -2,8 +2,9 @@
 
 # Video Arms
 
-Application de bureau **image → vidéo** avec les modèles open source installés sur ta machine
-(LTX-2 / 2.3, Wan 2.2…), pensée pour un GPU grand public : 10 Go de VRAM et beaucoup de RAM.
+Application de bureau **image → vidéo**, **prompt → vidéo**, **prompt → image** et **image → image**
+avec les modèles open source installés sur ta machine (LTX-2 / 2.3, Wan 2.2, SDXL, SD 1.5…), pensée
+pour un GPU grand public : 10 Go de VRAM et beaucoup de RAM.
 
 Ce qu'elle apporte par rapport à lancer un modèle « à la main » :
 
@@ -18,10 +19,16 @@ Ce qu'elle apporte par rapport à lancer un modèle « à la main » :
   post-traitement), secondes par pas, pic de VRAM et de RAM, stratégie utilisée. L'historique sert
   à estimer la durée des prochaines générations.
 - **Audio** avec les modèles qui en produisent (LTX-2), interpolation et upscale ffmpeg sans modèle.
+- **Modèles chargés sous contrôle.** En mode Auto, l'app charge et remplace les modèles selon la
+  tâche ; sinon tu charges et décharges toi-même (la VRAM est à toi). Le modèle chargé est affiché.
+- **Onglet Image** : SDXL et SD 1.5 en dossiers diffusers ou en fichiers `.safetensors` uniques
+  (famille lue dans l'en-tête), modèles distillés (Turbo, Lightning) en 4 étapes, plusieurs images
+  d'un coup avec graines consécutives.
 - **Rien n'est téléchargé** : l'app repère les modèles déjà présents (caches Hugging Face,
   dossiers diffusers). Les formats GGUF/ComfyUI sont détectés mais pas encore utilisables.
 
-![Video Arms](docs/capture.png)
+![Video Arms — vidéo](docs/capture.png)
+![Video Arms — image](docs/capture-image.png)
 
 ## Installer
 

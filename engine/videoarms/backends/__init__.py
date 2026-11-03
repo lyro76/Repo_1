@@ -17,8 +17,9 @@ from ..protocol import Emitter, Job, Timings
 
 @dataclass
 class Result:
-    frames: np.ndarray                 # (N, H, W, 3) uint8
+    frames: np.ndarray                 # (N, H, W, 3) uint8 ; N = 1 pour une image
     fps: float
+    kind: str = "video"                # video | image
     audio: np.ndarray | None = None    # (C, S) float32
     audio_rate: int = 24000
     timings: Timings = field(default_factory=Timings)
@@ -57,6 +58,9 @@ class Backend:
     def generate(self, job: Job, em: Emitter, cancel) -> Result:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def warm(self, em: Emitter) -> None:
+        """Charge le modèle sans générer (bouton « Charger »)."""
+
     def unload(self) -> None:
         pass
 
@@ -78,6 +82,10 @@ def get_backend(kind: str, model_path: str, machine) -> Backend:
         from .wan import WanBackend
 
         return WanBackend(model_path, machine)
+    if kind == "sd":
+        from .sd import SdBackend
+
+        return SdBackend(model_path, machine)
     raise ValueError(f"backend inconnu : {kind}")
 
 

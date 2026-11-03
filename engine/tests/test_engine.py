@@ -12,15 +12,21 @@ from videoarms.server import Engine, serve
 from videoarms.video import post_process, probe_video, write_video
 
 
-def test_scan_finds_video_models_and_ignores_sdxl(fake_models):
+def test_scan_finds_video_and_image_models(fake_models):
     found = models.scan([str(fake_models)], include_mock=False)
     names = [(m.backend, m.name, m.supported) for m in found]
     assert ("ltx2", "diffusers/LTX-2.3-Distilled-Diffusers", True) in names
     assert ("wan", "Wan-AI/Wan2.2-TI2V-5B-Diffusers", True) in names
     assert any(b == "comfy" and not ok for b, _, ok in names)
-    assert not any("RealVis" in n for _, n, _ in names)
     ltx = next(m for m in found if m.backend == "ltx2")
-    assert ltx.distilled and ltx.audio and "transformer" in ltx.components
+    assert ltx.distilled and ltx.audio and "transformer" in ltx.components and ltx.tasks == ["i2v", "t2v"]
+    # SDXL en dossier diffusers et en fichier unique, avec la famille lue dans l'en-tête.
+    realvis = next(m for m in found if "RealVis" in m.name)
+    assert (realvis.kind, realvis.backend, realvis.tasks) == ("image", "sd", ["t2i", "i2i"])
+    single = next(m for m in found if m.format == "single_file" and "Juggernaut" in m.name)
+    assert single.name == "Juggernaut_X_v10 (SDXL)" and single.distilled is False
+    turbo = next(m for m in found if "Turbo" in m.name)
+    assert turbo.distilled and turbo.family == "SD 1.5"
 
 
 def test_memory_plan_follows_vram_ram_and_steps():
@@ -46,8 +52,40 @@ def test_fit_and_crop():
 
 
 def test_job_frames_rounding():
-    assert Job(model="m", image="i", prompt="p", seconds=5, fps=24).num_frames == 121
-    assert Job(model="m", image="i", prompt="p", seconds=10, fps=24).num_frames == 241
+    assert Job(model="m", prompt="p", seconds=5, fps=24).num_frames == 121
+    assert Job(model="m", prompt="p", seconds=10, fps=24).num_frames == 241
+
+
+def test_mock_image_tasks_and_load_policy(image, tmp_path):
+    out = io.StringIO()
+    engine = Engine(Emitter(out))
+    engine.probe([])
+    # prompt → image
+    res = engine.generate(Job(model="mock", prompt="coucher de soleil", task="t2i", width=96, height=64, out_dir=str(tmp_path), post={"upscale": 2}))
+    assert res["kind"] == "image" and res["path"].endswith("_x2.png") and res["frames"] == 1
+    from PIL import Image
+
+    assert Image.open(res["path"]).size == (192, 128)
+    # image → image
+    res = engine.generate(Job(model="mock", prompt="x", task="i2i", image=str(image), width=96, height=64, strength=0.5, out_dir=str(tmp_path)))
+    assert res["path"].endswith(".png")
+    # prompt → vidéo, sans image
+    res = engine.generate(Job(model="mock", prompt="x", task="t2v", width=96, height=64, seconds=1, fps=8, out_dir=str(tmp_path)))
+    assert res["kind"] == "video" and res["frames"] == 9
+    # Une image est exigée pour i2v.
+    import pytest
+
+    with pytest.raises(ValueError):
+        engine.generate(Job(model="mock", prompt="x", task="i2v", out_dir=str(tmp_path)))
+    # Politique manuelle : charger un autre modèle sans décharger est refusé.
+    engine.auto_load = False
+    engine.models.append(models.ModelInfo(id="mock2", name="autre", path="/x", backend="mock", family="t", format="mock", kind="video", tasks=["t2v"]))
+    with pytest.raises(ValueError, match="décharge"):
+        engine.generate(Job(model="mock2", prompt="x", task="t2v", width=64, height=64, seconds=1, fps=8, out_dir=str(tmp_path)))
+    engine.unload()
+    assert engine.load("mock2")["model"]["id"] == "mock2"
+    events = [json.loads(l) for l in out.getvalue().splitlines()]
+    assert any(e["event"] == "loaded" for e in events)
 
 
 def test_mock_generation_end_to_end(image, tmp_path):
@@ -55,7 +93,7 @@ def test_mock_generation_end_to_end(image, tmp_path):
     em = Emitter(out)
     engine = Engine(em)
     engine.probe([])
-    job = Job(model="mock", image=str(image), prompt="zoom", width=160, height=96, seconds=1, fps=12, out_dir=str(tmp_path / "out"), post={"fps": 24})
+    job = Job(model="mock", image=str(image), prompt="zoom", task="i2v", width=160, height=96, seconds=1, fps=12, out_dir=str(tmp_path / "out"), post={"fps": 24})
     res = engine.generate(job)
     assert res["frames"] == 17 and res["audio"] is True
     assert res["path"].endswith("_final.mp4") and res["raw_path"].endswith(".mp4")

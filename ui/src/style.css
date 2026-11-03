@@ -26,13 +26,22 @@ code { font-family: var(--mono); font-size: 12px; background: var(--bg-3); paddi
 .spacer { flex: 1; }
 
 #app { display: grid; height: 100vh; grid-template-columns: 360px minmax(0, 1fr) clamp(360px, 30vw, 460px); grid-template-rows: 44px 1fr 26px; grid-template-areas: "top top top" "left center right" "status status status"; }
-.topbar { grid-area: top; display: flex; align-items: center; gap: 14px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--bg-1); }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+.topbar { grid-area: top; display: flex; align-items: center; gap: 12px; padding: 0 14px; border-bottom: 1px solid var(--line); background: var(--bg-1); white-space: nowrap; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 500; flex-shrink: 0; }
+#mode-hint { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+#loaded-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.badge { flex-shrink: 0; }
+@media (max-width: 1500px) { #mode-hint { display: none; } }
 .brand img { width: 22px; height: 22px; border-radius: 50%; }
 .brand b { color: var(--accent); font-weight: 600; }
 .segmented { display: flex; padding: 2px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r); }
 .segmented button { border: 0; background: transparent; color: var(--muted); padding: 3px 14px; border-radius: 6px; font-size: 13px; }
 .segmented button.on { background: var(--bg-3); color: var(--text); font-weight: 600; }
+.segmented.wide { width: 100%; } .segmented.wide button { flex: 1; }
+.loaded { display: flex; align-items: center; gap: 6px; }
+.loaded .chip { padding: 2px 9px; }
+.player img { width: 100%; height: 100%; object-fit: contain; }
+input[type="range"] { padding: 0; accent-color: var(--accent); }
 .icon-btn { border: 0; background: transparent; color: var(--muted); font-size: 18px; width: 34px; }
 .icon-btn:hover { color: var(--text); }
 .badge { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--bg-2); color: var(--muted); }

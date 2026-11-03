@@ -82,6 +82,22 @@ def maybe_compile(pipe, enabled: bool, em=None, transformer_attr: str = "transfo
         return False
 
 
+def release(pipe) -> None:
+    """Libère un pipeline et la VRAM qu'il occupait."""
+    import torch
+
+    try:
+        for name, comp in list(getattr(pipe, "components", {}).items()):
+            if isinstance(comp, torch.nn.Module):
+                setattr(pipe, name, None)
+    except Exception:
+        pass
+    del pipe
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+
 def reset_peaks() -> None:
     import torch
 

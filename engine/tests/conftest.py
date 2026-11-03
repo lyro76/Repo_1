@@ -14,7 +14,7 @@ def image(tmp_path):
 
 
 @pytest.fixture
-def fake_models(tmp_path):
+def fake_models(tmp_path, monkeypatch):
     """Un cache HF avec LTX-2.3 distillé et Wan 2.2 5B, un dossier ComfyUI LTX-2.5, un dossier SDXL (ignoré)."""
     import json
 
@@ -33,8 +33,15 @@ def fake_models(tmp_path):
     diffusers_model(root / "models--SG161222--RealVisXL_V5.0/snapshots/ghi", "StableDiffusionXLPipeline", ["unet", "vae", "text_encoder", "text_encoder_2"])
     diffusers_model(root / "models--h94--IP-Adapter/snapshots/jkl", "IPAdapter", ["models"])
 
+    # Pas de fichiers de plusieurs Go dans les tests (Windows n'aime pas les fichiers creux) :
+    # on abaisse les seuils de taille.
+    from videoarms import models
+
+    monkeypatch.setattr(models, "MIN_CHECKPOINT_BYTES", 20_000)
+    monkeypatch.setattr(models, "SDXL_SIZE_HINT", 50_000)
+
     def single_file(path, keys, size):
-        """Un faux .safetensors : vrai en-tête, poids remplacés par des zéros clairsemés."""
+        """Un faux .safetensors : vrai en-tête, poids remplacés par des zéros."""
         import struct
 
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -43,8 +50,8 @@ def fake_models(tmp_path):
             f.write(struct.pack("<Q", len(header)) + header)
             f.truncate(size)
 
-    single_file(root / "SDXL_merge/Juggernaut_X_v10.safetensors", ["conditioner.embedders.1.model.x", "model.diffusion_model.y"], 6_900_000_000)
-    single_file(root / "SD15_merge/DreamShaper_Turbo.safetensors", ["cond_stage_model.transformer.x", "model.diffusion_model.y"], 2_100_000_000)
+    single_file(root / "SDXL_merge/Juggernaut_X_v10.safetensors", ["conditioner.embedders.1.model.x", "model.diffusion_model.y"], 69_000)
+    single_file(root / "SD15_merge/DreamShaper_Turbo.safetensors", ["cond_stage_model.transformer.x", "model.diffusion_model.y"], 21_000)
     single_file(root / "petit.safetensors", ["model.x"], 10_000)
     comfy = root / "LTX-2.5"
     (comfy / "transformer_gguf").mkdir(parents=True)

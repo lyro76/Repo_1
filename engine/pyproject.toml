@@ -1,6 +1,6 @@
 [project]
 name = "videoarms"
-version = "0.1.1"
+version = "0.1.2"
 description = "Moteur de ScreenComfy : vidéo, image, 3D et audio, moteur intégré ou ComfyUI"
 requires-python = ">=3.10"
 dependencies = [

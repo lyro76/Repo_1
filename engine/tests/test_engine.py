@@ -118,7 +118,10 @@ def test_write_video_with_audio(tmp_path):
 
 def test_server_protocol_over_pipes(image, tmp_path):
     """Le vrai sous-processus : probe, generate, cancel pendant la génération."""
-    proc = subprocess.Popen([sys.executable, "-m", "videoarms.server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    import os
+
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    proc = subprocess.Popen([sys.executable, "-m", "videoarms.server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", env=env)
     lines = []
 
     def reader():

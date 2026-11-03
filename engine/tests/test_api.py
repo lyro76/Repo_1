@@ -86,7 +86,10 @@ def test_mcp_connector_over_stdio(image, tmp_path):
     engine = Engine(Emitter(io.StringIO()))
     engine.probe([])
     url = engine.set_api(True, 0, None, str(tmp_path))["url"]
-    proc = subprocess.Popen([sys.executable, "-m", "videoarms.mcp", "--url", url], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    import os
+
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    proc = subprocess.Popen([sys.executable, "-m", "videoarms.mcp", "--url", url], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8", env=env)
     try:
         def rpc(id, method, params=None):
             proc.stdin.write(json.dumps({"jsonrpc": "2.0", "id": id, "method": method, "params": params or {}}) + "\n")

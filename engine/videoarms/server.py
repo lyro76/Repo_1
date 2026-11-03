@@ -229,6 +229,13 @@ def safe_name(name: str) -> str:
 
 def serve(stdin=None, stdout=None) -> None:
     stdin = stdin or sys.stdin
+    # Sous Windows, la console est en cp1252 : nos événements sont en UTF-8.
+    for stream in (sys.stdout, sys.stderr, sys.stdin):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     em = Emitter(stdout)
     engine = Engine(em)
     em.emit("ready", version=__import__("videoarms").__version__, machine=engine.machine.to_dict())

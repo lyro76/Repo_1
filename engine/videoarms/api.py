@@ -129,9 +129,12 @@ class ApiServer:
                     self._send({"error": str(e), "trace": traceback.format_exc()}, 400)
 
             def _file(self, path: str):
+                import os
+
                 p = Path(path)
-                allowed = {Path(r.job.out_dir).resolve() for r in api.jobs.values()}
-                if not p.is_file() or not any(str(p.resolve()).startswith(str(a)) for a in allowed):
+                norm = lambda x: os.path.normcase(str(Path(x).resolve()))
+                allowed = {norm(r.job.out_dir) for r in api.jobs.values()}
+                if not p.is_file() or not any(norm(p).startswith(a + os.sep) or norm(p) == a for a in allowed):
                     return self._send({"error": "fichier inconnu"}, 404)
                 import mimetypes
 

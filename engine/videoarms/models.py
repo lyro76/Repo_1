@@ -154,9 +154,15 @@ def safetensors_keys(path: Path, limit: int = 4000) -> list[str]:
         return []
 
 
+# En dessous, un .safetensors est un LoRA, un VAE ou un embedding, pas un checkpoint.
+MIN_CHECKPOINT_BYTES = 1_000_000_000
+# Au-dessus, sans en-tête lisible, on suppose SDXL.
+SDXL_SIZE_HINT = 5_000_000_000
+
+
 def read_single_file(path: Path) -> ModelInfo | None:
     """Un checkpoint Stable Diffusion en un seul fichier (SDXL, SD 1.5, SD 2)."""
-    if path.suffix.lower() not in (".safetensors", ".ckpt") or path.stat().st_size < 1_000_000_000:
+    if path.suffix.lower() not in (".safetensors", ".ckpt") or path.stat().st_size < MIN_CHECKPOINT_BYTES:
         return None
     keys = safetensors_keys(path) if path.suffix.lower() == ".safetensors" else []
     if not keys and path.suffix.lower() == ".safetensors":
@@ -173,7 +179,7 @@ def read_single_file(path: Path) -> ModelInfo | None:
     elif keys:
         return None
     if family is None:
-        family = "SDXL" if path.stat().st_size > 5_000_000_000 else "SD 1.5"
+        family = "SDXL" if path.stat().st_size > SDXL_SIZE_HINT else "SD 1.5"
     name = path.stem
     return ModelInfo(
         id=f"sd:{path.resolve()}",

@@ -95,6 +95,12 @@ class Client:
 
 
 def serve(url: str, token: str | None = None, stdin=None, stdout=None) -> None:
+    for stream in (sys.stdout, sys.stdin):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     client = Client(url, token)

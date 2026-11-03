@@ -52,7 +52,9 @@ def test_analyze_finds_parameters():
 
 def test_workflows_become_models(wf_dir):
     found = models.scan_workflows(str(wf_dir))
-    by = {m.path.rsplit("/", 1)[-1]: m for m in found}
+    from pathlib import Path
+
+    by = {Path(m.path).name: m for m in found}
     assert by["ltx_i2v.json"].tasks == ["i2v"] and by["ltx_i2v.json"].kind == "video" and by["ltx_i2v.json"].supported
     assert by["musique.json"].kind == "audio" and by["musique.json"].tasks == ["t2a"]
     assert not by["interface.json"].supported and "Export (API)" in by["interface.json"].note

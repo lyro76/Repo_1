@@ -1,0 +1,58 @@
+# APK Android (debug, installable directement) à chaque push, et une Release
+# « flipper-vX.Y.Z » quand la version de package.json change.
+name: Android
+
+on:
+  push:
+    branches: ["flipper"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: SDK Android (plateforme 36)
+        run: |
+          SDKM=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort | tail -1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: APK debug
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Nom de version
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk "NovaFlipper-${{ steps.v.outputs.version }}.apk"
+      - name: Version web (zip à ouvrir dans un navigateur ou à héberger)
+        run: cd dist && zip -qr "../NovaFlipper-web-${{ steps.v.outputs.version }}.zip" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NovaFlipper-apk
+          path: |
+            NovaFlipper-*.apk
+            NovaFlipper-web-*.zip
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: flipper-v${{ steps.v.outputs.version }}
+          name: Nova Flipper v${{ steps.v.outputs.version }}
+          body: |
+            Jeu Android (APK de test, signé en debug : autoriser « sources inconnues » à l'installation).
+            Code source : https://github.com/lyro76/Repo_1/tree/flipper
+          files: |
+            NovaFlipper-*.apk
+            NovaFlipper-web-*.zip

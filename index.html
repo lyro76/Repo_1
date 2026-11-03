@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#07070f" />
+  <title>Nova Flipper</title>
+  <link rel="icon" href="./icon.svg" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Urbanist:wght@600;700;800&display=swap" />
+</head>
+<body>
+  <div id="app">
+    <div class="head"><canvas id="dmd"></canvas></div>
+    <div id="field" class="field"><canvas id="table"></canvas>
+      <div id="menu" class="menu">
+        <div class="logo"><span>NOVA</span><small>FLIPPER</small></div>
+        <p class="tag">Cinq mondes, une rampe, une roue bonus, le multibille. Jusqu'à six joueurs, trois billes chacun.</p>
+        <div class="players"><div class="lbl">Joueurs</div><div class="pick" id="pick"></div></div>
+        <button class="start" id="start">Jouer</button>
+        <p class="help">Palettes : boutons du bas ou touches A / P · Lancer : espace (maintenir pour la puissance) · Secouer : flèches ← →</p>
+      </div>
+      <div id="over" class="menu" hidden><div class="logo small"><span>FIN</span><small>DE PARTIE</small></div><div id="ranking" class="ranking"></div><button class="start" id="again">Rejouer</button><button class="start ghost" id="tomenu">Menu</button></div>
+    </div>
+    <div class="controls">
+      <button id="bL" class="flip"><b>◀</b><span>palette gauche</span></button>
+      <button id="nL" class="nudge"><b>⇠</b><span>secouer</span></button>
+      <button id="go" class="launch"><b>●</b><span>lancer</span></button>
+      <button id="nR" class="nudge"><b>⇢</b><span>secouer</span></button>
+      <button id="bR" class="flip"><b>▶</b><span>palette droite</span></button>
+    </div>
+  </div>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

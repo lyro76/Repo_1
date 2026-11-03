@@ -61,4 +61,4 @@ testé à travers un vrai sous-processus, annulation comprise). Les backends LTX
 ## Publier une version
 
 Changer `"version"` dans `src-tauri/tauri.conf.json` (et `Cargo.toml`, `ui/package.json`) et
-pousser sur la branche `video-arms` : GitHub Actions construit les installateurs.
+pousser sur la branche `video-arms` : GitHub Actions construit les installateurs et crée la Release `video-arms-vX.Y.Z`.

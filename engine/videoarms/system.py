@@ -55,6 +55,18 @@ def nvidia_smi() -> tuple[str, int, str] | None:
     return best
 
 
+def gpu_free_mb() -> int:
+    """VRAM libre maintenant (nvidia-smi), 0 si inconnue."""
+    exe = shutil.which("nvidia-smi")
+    if not exe:
+        return 0
+    try:
+        out = subprocess.run([exe, "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
+        return max(int(l.strip()) for l in out.stdout.splitlines() if l.strip().isdigit())
+    except Exception:
+        return 0
+
+
 def probe_machine() -> Machine:
     m = Machine()
     try:

@@ -6,20 +6,41 @@ import time
 import uuid
 from pathlib import Path
 
-from ..comfy.server import ComfyServer, kind_of_outputs, outputs_of
+from ..comfy.server import ComfyServer, MemorySampler, kind_of_outputs, outputs_of
 from ..comfy.workflow import analyze, fill, load_workflow
 from ..protocol import Emitter, Job, Timings
+from ..system import gpu_free_mb
 from . import Backend, Cancelled, Result, Stage
 
 
 class ComfyBackend(Backend):
     name = "comfy"
 
-    def __init__(self, model_path: str, machine, server: ComfyServer):
+    def __init__(self, model_path: str, machine, server: ComfyServer, variants: list[dict] | None = None):
         super().__init__(model_path, machine)
         self.server = server
-        self.wf = load_workflow(model_path)
-        self.analysis = analyze(self.wf)
+        self.variants = variants or [{"path": model_path, "min_vram_gb": None, "name": Path(model_path).stem}]
+        self.wfs = {v["path"]: load_workflow(v["path"]) for v in self.variants}
+        self.analyses = {p: analyze(wf) for p, wf in self.wfs.items()}
+        self.wf = self.wfs[self.variants[0]["path"]]
+        self.analysis = self.analyses[self.variants[0]["path"]]
+
+    def choose(self, job: Job, em: Emitter) -> dict:
+        """La variante imposée, sinon la plus exigeante qui tient dans la VRAM libre."""
+        if job.variant:
+            for v in self.variants:
+                if v["path"] == job.variant or v["name"] == job.variant:
+                    em.log(f"variante imposée : {v['name']}")
+                    return v
+            em.log(f"variante inconnue « {job.variant} » : choix automatique")
+        if len(self.variants) == 1:
+            return self.variants[0]
+        free = self.server.stats()["vram_free_mb"] if self.server.alive() else 0
+        free = free or gpu_free_mb() or self.machine.vram_mb
+        fitting = [v for v in self.variants if v["min_vram_gb"] is None or v["min_vram_gb"] * 1024 <= free]
+        chosen = fitting[0] if fitting else self.variants[-1]
+        em.log(f"VRAM libre {free // 1024} Go → variante « {chosen['name']} »" + ("" if fitting else " (la moins exigeante, ça risque de ne pas tenir)"))
+        return chosen
 
     def warm(self, em: Emitter) -> None:
         self.server.start(log=em.log)
@@ -29,6 +50,8 @@ class ComfyBackend(Backend):
         t = Timings()
         with Stage(em, "load", t, model=Path(self.model_path).name, strategy="comfyui"):
             self.server.start(log=em.log)
+            variant = self.choose(job, em)
+            self.wf, self.analysis = self.wfs[variant["path"]], self.analyses[variant["path"]]
             missing = self.server.missing_nodes(set(self.analysis.class_types))
             if missing:
                 raise RuntimeError(f"nœuds absents de ton ComfyUI : {', '.join(missing)} (à installer via le gestionnaire de nœuds)")
@@ -64,8 +87,9 @@ class ComfyBackend(Backend):
                 state["value"], state["max"], state["t"] = value, maximum, now
                 em.progress(value, maximum, state["steps"][-1] if state["steps"] else 0.0)
 
-        with Stage(em, "sample", t, steps=job.steps or "workflow"):
+        with Stage(em, "sample", t, steps=job.steps or "workflow"), MemorySampler(self.server) as mem:
             prompt_id = self.server.submit(wf, client_id)
+            mem.sample()
             try:
                 history = self.server.wait(prompt_id, client_id, on_progress, cancel)
             except InterruptedError:
@@ -81,8 +105,10 @@ class ComfyBackend(Backend):
             tmp = Path(job.out_dir) / ".comfy"
             for i, (_, it) in enumerate(items):
                 files.append(self.server.download(it, tmp / f"{uuid.uuid4().hex[:8]}_{it['filename']}"))
-        return Result(frames=None, fps=job.fps, kind=kind, files=files, timings=t, memory_plan={"strategy": "comfyui", "label": "géré par ComfyUI"},
-                      settings={"steps": job.steps, "guidance": job.guidance, "seed": job.seed or 0, "workflow": Path(self.model_path).name})
+        label = "géré par ComfyUI" + (f" · variante {variant['name']}" if len(self.variants) > 1 else "")
+        return Result(frames=None, fps=job.fps, kind=kind, files=files, timings=t, vram_peak_mb=mem.vram_peak_mb, ram_peak_mb=mem.ram_peak_mb,
+                      memory_plan={"strategy": "comfyui", "label": label, "reason": f"VRAM totale vue par ComfyUI : {mem.vram_total_mb // 1024} Go", "vae_tiling": False, "variant": variant["name"]},
+                      settings={"steps": job.steps, "guidance": job.guidance, "seed": job.seed or 0, "workflow": Path(variant["path"]).name})
 
     def unload(self) -> None:
         # Le serveur ComfyUI garde ses modèles en mémoire : on lui demande de libérer.

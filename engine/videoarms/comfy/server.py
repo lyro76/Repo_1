@@ -65,6 +65,27 @@ class ComfyServer:
         except Exception:
             return False
 
+    def stats(self) -> dict:
+        """Mémoire vue par ComfyUI : {"vram_total_mb", "vram_free_mb", "gpu"} (0 si indisponible)."""
+        try:
+            st = self.get("/system_stats", timeout=5)
+            dev = (st.get("devices") or [{}])[0]
+            return {"gpu": dev.get("name"), "vram_total_mb": int(dev.get("vram_total", 0) // (1024 * 1024)),
+                    "vram_free_mb": int(dev.get("vram_free", 0) // (1024 * 1024))}
+        except Exception:
+            return {"gpu": None, "vram_total_mb": 0, "vram_free_mb": 0}
+
+    def ram_mb(self) -> int:
+        """RAM du processus ComfyUI lancé par l'app (0 si externe ou psutil absent)."""
+        if self.proc is None or self.proc.poll() is not None:
+            return 0
+        try:
+            import psutil
+
+            return psutil.Process(self.proc.pid).memory_info().rss // (1024 * 1024)
+        except Exception:
+            return 0
+
     def status(self) -> dict:
         found = bool(self.dir and (self.dir / "main.py").is_file())
         return {
@@ -237,6 +258,47 @@ class ComfyServer:
                     ws.close()
                 except Exception:
                     pass
+
+
+class MemorySampler:
+    """Relève, pendant un job, le pic de VRAM utilisée et de RAM du serveur."""
+
+    def __init__(self, server: ComfyServer, period: float = 0.5):
+        self.server, self.period = server, period
+        self.vram_peak_mb = 0
+        self.ram_peak_mb = 0
+        self.vram_total_mb = 0
+        self._stop = threading_event()
+
+    def __enter__(self):
+        import threading
+
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        self.thread.join(timeout=2)
+        return False
+
+    def sample(self) -> None:
+        st = self.server.stats()
+        if st["vram_total_mb"]:
+            self.vram_total_mb = st["vram_total_mb"]
+            self.vram_peak_mb = max(self.vram_peak_mb, st["vram_total_mb"] - st["vram_free_mb"])
+        self.ram_peak_mb = max(self.ram_peak_mb, self.server.ram_mb())
+
+    def _run(self):
+        while not self._stop.is_set():
+            self.sample()
+            self._stop.wait(self.period)
+
+
+def threading_event():
+    import threading
+
+    return threading.Event()
 
 
 def outputs_of(history: dict) -> list[tuple[str, dict]]:

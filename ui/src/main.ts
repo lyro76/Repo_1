@@ -102,6 +102,14 @@ function renderModelNote() {
   if (m && state.kind === "video" && !m.audio) parts.push("ce modèle ne produit pas d'audio");
   if (m?.distilled) parts.push("distillé : peu d'étapes, rapide");
   $("model-note").textContent = parts.join(" · ");
+  const vf = $("variant-field");
+  const vs = $<HTMLSelectElement>("variant");
+  if (m?.variants?.length) {
+    const prev = vs.value;
+    vs.replaceChildren(h("option", { value: "" }, "Auto (selon la VRAM libre)"), ...m.variants.map((v) => h("option", { value: v.name }, `${v.name}${v.min_vram_gb != null ? ` — ≥ ${v.min_vram_gb} Go de VRAM` : ""}`)));
+    vs.value = m.variants.some((v) => v.name === prev) ? prev : "";
+    vf.hidden = false;
+  } else vf.hidden = true;
   const cn = $("comfy-note");
   if (m?.backend === "comfy") {
     const miss = state.missing[m.id];
@@ -197,7 +205,7 @@ function renderResult() {
     ["Temps total", fmt(t.total)],
     ["Sampling", `${fmt(t.sample)} (${t.seconds_per_step.toFixed(2).replace(".", ",")} s/pas × ${d.settings.steps ?? "?"})`],
     ["VAE", fmt(t.decode)],
-    ["Mémoire", `${d.memory?.label ?? d.memory?.strategy ?? "—"} · pic VRAM ${gb(d.vram_peak_mb)}${d.ram_peak_mb ? ` · RAM ${gb(d.ram_peak_mb)}` : ""}`],
+    ["Mémoire", `${d.memory?.label ?? d.memory?.strategy ?? "—"}${d.vram_peak_mb ? ` · pic VRAM ${gb(d.vram_peak_mb)}` : " · VRAM non mesurée"}${d.ram_peak_mb ? ` · RAM ${gb(d.ram_peak_mb)}` : ""}`],
     ["Réglages", `graine ${d.settings.seed} · guidage ${d.settings.guidance}${d.settings.strength != null ? ` · liberté ${d.settings.strength}` : ""}${d.settings.attention ? ` · attention ${d.settings.attention}` : ""}${d.settings.compiled ? " · compilé" : ""}`],
   ];
   $("result-info").replaceChildren(...rows.map(([k, v]) => h("div", { class: "irow" }, h("span", { class: "k" }, k), h("span", {}, v))));
@@ -336,6 +344,7 @@ function buildJob(): JobSpec | string {
     out_dir: state.settings?.out_dir ?? "sorties",
     name: "",
     post,
+    variant: m.variants?.length ? $<HTMLSelectElement>("variant").value || null : null,
   };
 }
 

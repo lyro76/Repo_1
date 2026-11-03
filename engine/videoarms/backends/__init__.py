@@ -71,7 +71,7 @@ class Cancelled(Exception):
     pass
 
 
-def get_backend(kind: str, model_path: str, machine, server=None) -> Backend:
+def get_backend(kind: str, model_path: str, machine, server=None, variants=None) -> Backend:
     if kind == "mock":
         from .mock import MockBackend
 
@@ -91,7 +91,7 @@ def get_backend(kind: str, model_path: str, machine, server=None) -> Backend:
     if kind == "comfy":
         from .comfy_backend import ComfyBackend
 
-        return ComfyBackend(model_path, machine, server)
+        return ComfyBackend(model_path, machine, server, variants)
     raise ValueError(f"backend inconnu : {kind}")
 
 

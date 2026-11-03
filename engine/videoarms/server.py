@@ -89,7 +89,7 @@ class Engine:
             if not self.auto_load and self.loaded is not None:
                 raise ValueError(f"« {self.loaded.name} » est chargé ; décharge-le d'abord (ou repasse en mode auto)")
             self.unload()
-        self.backend = get_backend(info.backend, info.path, self.machine, server=self.comfy)
+        self.backend = get_backend(info.backend, info.path, self.machine, server=self.comfy, variants=info.variants or None)
         self.backend_key = key
         self.loaded = info
 

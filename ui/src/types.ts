@@ -31,6 +31,8 @@ export interface ModelInfo {
   note: string;
   kind: Kind;
   tasks: Task[];
+  /** Workflows ComfyUI : variantes `nom@<VRAM min Go>.json`, de la plus exigeante à la moins. */
+  variants?: { path: string; min_vram_gb: number | null; name: string }[];
 }
 
 export interface JobSpec {
@@ -55,6 +57,8 @@ export interface JobSpec {
   out_dir: string;
   name: string;
   post: { fps?: number; upscale?: number };
+  /** Variante de workflow imposée (sinon choix selon la VRAM libre). */
+  variant?: string | null;
 }
 
 export type Stage = "load" | "encode" | "sample" | "decode" | "write" | "post";
@@ -78,7 +82,7 @@ export interface Done {
   timings: Timings;
   vram_peak_mb: number;
   ram_peak_mb: number;
-  memory: { strategy: string; label: string; reason: string; vae_tiling: boolean };
+  memory: { strategy: string; label: string; reason: string; vae_tiling: boolean; variant?: string };
   settings: Record<string, unknown>;
   model: ModelInfo;
 }

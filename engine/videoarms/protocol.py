@@ -60,6 +60,8 @@ class Job:
     sage: bool = False
     out_dir: str = "."
     name: str = ""
+    # Workflows ComfyUI : chemin d'une variante imposée (sinon choix selon la VRAM libre).
+    variant: str | None = None
     # {"fps": 48, "upscale": 2}
     post: dict[str, Any] = field(default_factory=dict)
 

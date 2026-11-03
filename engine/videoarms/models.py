@@ -43,9 +43,11 @@ class ModelInfo:
     supported: bool = True
     note: str = ""
     components: list[str] = field(default_factory=list)
-    # video | image
+    # video | image | audio | 3d
     kind: str = "video"
     tasks: list[str] = field(default_factory=list)
+    # Workflows ComfyUI : variantes `nom@<VRAM min en Go>.json`, de la plus exigeante à la moins.
+    variants: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -211,14 +213,44 @@ def read_workflow(path: Path) -> ModelInfo | None:
     )
 
 
+def variant_of(path: Path) -> tuple[str, float | None]:
+    """`ltx25@16.json` → ("ltx25", 16.0) ; `ltx25.json` → ("ltx25", None)."""
+    stem = path.stem
+    if "@" in stem:
+        base, _, req = stem.rpartition("@")
+        try:
+            return base, float(req.replace(",", "."))
+        except ValueError:
+            pass
+    return stem, None
+
+
 def scan_workflows(folder: str | None) -> list[ModelInfo]:
     if not folder:
         return []
     root = Path(folder).expanduser()
     if not root.is_dir():
         return []
-    out = [read_workflow(p) for p in sorted(root.glob("*.json"))]
-    return [m for m in out if m]
+    groups: dict[str, list[tuple[float | None, Path]]] = {}
+    for p in sorted(root.glob("*.json")):
+        base, req = variant_of(p)
+        groups.setdefault(base, []).append((req, p))
+    out = []
+    for base, items in groups.items():
+        items.sort(key=lambda x: -(x[0] if x[0] is not None else -1))
+        main = read_workflow(items[0][1])
+        if not main:
+            continue
+        if len(items) > 1:
+            main.id = f"comfy:{(root / base).resolve()}"
+            main.name = f"{base} (ComfyUI, {len(items)} variantes)"
+            main.variants = [{"path": str(p.resolve()), "min_vram_gb": req, "name": p.stem} for req, p in items]
+            others = [read_workflow(p) for _, p in items[1:]]
+            bad = [o for o in others if o and not o.supported]
+            if bad:
+                main.note = (main.note + " ; " if main.note else "") + f"variante illisible : {bad[0].name}"
+        out.append(main)
+    return out
 
 
 def hf_display_name(cache_entry: Path) -> str:

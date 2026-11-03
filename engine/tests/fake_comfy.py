@@ -12,7 +12,8 @@ NODES = ["LoadImage", "CLIPTextEncode", "KSampler", "EmptyLTXVLatentVideo", "Sav
 
 
 class FakeComfy:
-    def __init__(self, missing: list[str] | None = None, outputs=None):
+    def __init__(self, missing: list[str] | None = None, outputs=None, vram_total_mb: int = 10240, vram_free_mb: int = 9000):
+        self.vram_total_mb, self.vram_free_mb = vram_total_mb, vram_free_mb
         self.received: list[dict] = []
         self.uploads: list[str] = []
         self.missing = set(missing or [])
@@ -31,7 +32,10 @@ class FakeComfy:
             def do_GET(self):
                 u = urlparse(self.path)
                 if u.path == "/system_stats":
-                    return self._json({"system": {"comfyui_version": "0.9.9"}})
+                    # Pendant un job, la VRAM libre baisse.
+                    busy = server.received and time.time() - server.received[-1]["t"] < 0.3
+                    free = server.vram_free_mb - (6000 if busy else 0)
+                    return self._json({"system": {"comfyui_version": "0.9.9"}, "devices": [{"name": "fake GPU", "type": "cuda", "vram_total": server.vram_total_mb * 1024 * 1024, "vram_free": free * 1024 * 1024}]})
                 if u.path == "/object_info":
                     return self._json({n: {} for n in NODES if n not in server.missing})
                 if u.path.startswith("/history/"):

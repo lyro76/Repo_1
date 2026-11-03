@@ -131,3 +131,37 @@ def test_mock_3d_and_audio(image, tmp_path):
     from videoarms.video import probe_video
 
     assert 1.5 < probe_video(r["path"])["seconds"] < 2.6
+
+
+def test_variants_chosen_by_free_vram(image, tmp_path):
+    """`ltx25@16.json` et `ltx25@8.json` → un seul workflow ; la variante dépend de la VRAM libre."""
+    d = tmp_path / "wfs"
+    d.mkdir()
+    big = json.loads(json.dumps(I2V_WF))
+    big["5"]["inputs"]["width"] = 1920
+    (d / "ltx25@16.json").write_text(json.dumps(big))
+    (d / "ltx25@8.json").write_text(json.dumps(I2V_WF))
+    found = models.scan_workflows(str(d))
+    assert len(found) == 1 and len(found[0].variants) == 2 and found[0].variants[0]["min_vram_gb"] == 16
+    for free, expected in [(9000, "ltx25@8"), (20000, "ltx25@16")]:
+        fake = FakeComfy(vram_total_mb=24576, vram_free_mb=free)
+        try:
+            out = io.StringIO()
+            engine = Engine(Emitter(out))
+            engine.probe([], {"dir": None, "port": fake.port}, str(d))
+            res = engine.generate(Job(model=found[0].id, task="i2v", image=str(image), prompt="x", out_dir=str(tmp_path / "out")))
+            assert res["memory"]["variant"] == expected, out.getvalue()
+            assert res["settings"]["workflow"] == f"{expected}.json"
+            # La VRAM utilisée pendant le job est mesurée depuis ComfyUI.
+            assert res["vram_peak_mb"] >= 24576 - free + 5000, res["vram_peak_mb"]
+        finally:
+            fake.stop()
+    # Variante imposée.
+    fake = FakeComfy(vram_free_mb=20000)
+    try:
+        engine = Engine(Emitter(io.StringIO()))
+        engine.probe([], {"dir": None, "port": fake.port}, str(d))
+        res = engine.generate(Job(model=found[0].id, task="i2v", image=str(image), prompt="x", variant="ltx25@8", out_dir=str(tmp_path / "out")))
+        assert res["memory"]["variant"] == "ltx25@8"
+    finally:
+        fake.stop()

@@ -1,0 +1,27 @@
+[project]
+name = "videoarms"
+version = "0.1.0"
+description = "Moteur de génération vidéo de Video Arms (image → vidéo, modèles locaux)"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pillow",
+    "imageio>=2.34",
+    "imageio-ffmpeg",
+    "psutil",
+]
+
+[project.optional-dependencies]
+# Les vrais modèles. torch s'installe à part (index CUDA), voir requirements-cuda.txt.
+models = ["diffusers>=0.42", "transformers>=4.57", "accelerate", "safetensors", "sentencepiece", "protobuf"]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["videoarms*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

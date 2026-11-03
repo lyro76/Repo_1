@@ -1,0 +1,599 @@
+import { backend, type Backend } from "./api";
+import { $, h } from "./dom";
+import type { Done, EngineEvent, JobSpec, Machine, ModelInfo, Run, Settings, Stage, Status } from "./types";
+
+// ---------- état ----------
+
+interface QueueItem {
+  id: number;
+  job: JobSpec;
+  state: "waiting" | "running" | "done" | "error" | "cancelled";
+  stages: Partial<Record<Stage, { label: string; seconds: number | null; running: boolean; ok: boolean }>>;
+  progress?: { step: number; total: number; sps: number };
+  done?: Done;
+  error?: string;
+}
+
+const STAGES: Stage[] = ["load", "encode", "sample", "decode", "write", "post"];
+const STAGE_SHORT: Record<Stage, string> = { load: "chargement", encode: "encodage", sample: "sampling", decode: "VAE", write: "écriture", post: "post" };
+
+const state = {
+  settings: null as Settings | null,
+  status: null as Status | null,
+  machine: null as Machine | null,
+  models: [] as ModelInfo[],
+  engine: "off" as "off" | "starting" | "ready" | "busy" | "error",
+  image: null as string | null,
+  mode: "draft" as "draft" | "final",
+  queue: [] as QueueItem[],
+  nextId: 1,
+  runs: [] as Run[],
+  log: [] as string[],
+  lastDone: null as QueueItem | null,
+};
+
+let api: Backend;
+const cur = () => state.queue.find((q) => q.state === "running") ?? null;
+
+// ---------- rendu ----------
+
+const fmt = (s: number) => (s >= 60 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s` : `${s.toFixed(1).replace(".", ",")} s`);
+const gb = (mb: number) => `${(mb / 1024).toFixed(1).replace(".", ",")} Go`;
+
+function renderEngineBadge() {
+  const b = $("engine-badge");
+  const text = { off: "Moteur arrêté", starting: "Démarrage…", ready: "Moteur prêt", busy: "Génération en cours", error: "Moteur en erreur" }[state.engine];
+  b.className = `badge ${state.engine}`;
+  b.textContent = text;
+}
+
+function renderModels() {
+  const sel = $<HTMLSelectElement>("model");
+  const prev = sel.value;
+  sel.replaceChildren(
+    ...state.models.map((m) =>
+      h("option", { value: m.id, disabled: !m.supported || undefined }, `${m.name}${m.size_gb ? ` · ${m.size_gb} Go` : ""}${m.supported ? "" : " (bientôt)"}`),
+    ),
+  );
+  const usable = state.models.filter((m) => m.supported);
+  const wanted = prev || (state.settings?.ui?.model as string) || "";
+  sel.value = usable.some((m) => m.id === wanted) ? wanted : (usable.find((m) => m.backend !== "mock")?.id ?? usable[0]?.id ?? "");
+  renderModelNote();
+}
+
+function selectedModel(): ModelInfo | undefined {
+  return state.models.find((m) => m.id === $<HTMLSelectElement>("model").value);
+}
+
+function renderModelNote() {
+  const m = selectedModel();
+  const parts: string[] = [];
+  if (m?.note) parts.push(m.note);
+  if (m && !m.audio) parts.push("ce modèle ne produit pas d'audio");
+  if (m?.distilled) parts.push("distillé : peu d'étapes, rapide");
+  $("model-note").textContent = parts.join(" · ");
+  $("opt-audio").toggleAttribute("disabled", !!m && !m.audio);
+  renderEstimate();
+}
+
+function renderStages() {
+  const q = cur() ?? state.lastDone;
+  const box = $("stages");
+  $("job-title").textContent = q ? `#${q.id} · ${q.job.width}×${q.job.height} · ${q.job.seconds} s · ${q.job.mode === "draft" ? "brouillon" : "final"}` : "";
+  $("cancel").hidden = !cur();
+  if (!q) {
+    box.replaceChildren(h("div", { class: "muted small empty" }, "Choisis une image, décris le mouvement, puis Générer."));
+    $("progress").hidden = true;
+    return;
+  }
+  box.replaceChildren(
+    ...STAGES.map((s) => {
+      const st = q.stages[s];
+      const cls = !st ? "todo" : st.running ? "run" : st.ok ? "ok" : "err";
+      return h("div", { class: `stage ${cls}` }, h("span", { class: "dot" }), h("span", { class: "name" }, STAGE_SHORT[s]), h("span", { class: "mono time" }, st?.seconds != null ? fmt(st.seconds) : st?.running ? "…" : ""));
+    }),
+  );
+  const p = q.progress;
+  const running = q.state === "running";
+  $("progress").hidden = !(running && p);
+  if (p) {
+    ($("progress").querySelector(".bar i") as HTMLElement).style.width = `${Math.round((p.step / p.total) * 100)}%`;
+    const eta = (p.total - p.step) * p.sps;
+    $("progress-text").textContent = `pas ${p.step}/${p.total} · ${p.sps.toFixed(2).replace(".", ",")} s/pas${running ? ` · reste ≈ ${fmt(eta)}` : ""}`;
+  }
+}
+
+function renderQueue() {
+  const items = state.queue.filter((q) => q.state !== "done" || q === state.lastDone);
+  $("queue").replaceChildren(
+    ...items.map((q) => {
+      const label = { waiting: "en attente", running: "en cours", done: "terminé", error: "échec", cancelled: "annulé" }[q.state];
+      const row = h("div", { class: `qitem ${q.state}` }, h("span", { class: "mono" }, `#${q.id}`), h("span", { class: "qp" }, q.job.prompt || "(sans prompt)"), h("span", { class: "muted small" }, `${q.job.width}×${q.job.height} · ${q.job.seconds} s`), h("span", { class: `qs ${q.state}` }, label));
+      if (q.state === "error") row.append(h("div", { class: "err small" }, q.error ?? ""));
+      if (q.state === "waiting") {
+        const b = h("button", { class: "link small" }, "retirer");
+        b.onclick = () => {
+          state.queue = state.queue.filter((x) => x !== q);
+          renderQueue();
+        };
+        row.append(b);
+      }
+      return row;
+    }),
+  );
+}
+
+function renderLog() {
+  const box = $("log");
+  const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 30;
+  box.replaceChildren(...state.log.slice(-300).map((l) => h("div", {}, l)));
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+function renderResult() {
+  const q = state.lastDone;
+  const player = $("player");
+  $("reveal").hidden = !q;
+  $("to-final").hidden = !q || q.job.mode !== "draft";
+  if (!q?.done) {
+    player.replaceChildren(h("div", { class: "muted small" }, "La vidéo s'affichera ici."));
+    $("result-info").replaceChildren();
+    return;
+  }
+  const d = q.done;
+  const v = h("video", { controls: true, src: `${api.fileUrl(d.path)}?t=${Date.now()}`, preload: "metadata" }) as HTMLVideoElement;
+  player.replaceChildren(v);
+  const t = d.timings;
+  const rows: [string, string][] = [
+    ["Fichier", d.path.split(/[\\/]/).pop() ?? d.path],
+    ["Vidéo", `${d.width}×${d.height} · ${d.frames} images · ${d.fps} i/s${d.audio ? " · audio" : ""}`],
+    ["Temps total", fmt(t.total)],
+    ["Sampling", `${fmt(t.sample)} (${t.seconds_per_step.toFixed(2).replace(".", ",")} s/pas × ${d.settings.steps ?? "?"})`],
+    ["VAE", fmt(t.decode)],
+    ["Mémoire", `${d.memory?.label ?? d.memory?.strategy ?? "—"} · pic VRAM ${gb(d.vram_peak_mb)}${d.ram_peak_mb ? ` · RAM ${gb(d.ram_peak_mb)}` : ""}`],
+    ["Réglages", `graine ${d.settings.seed} · guidage ${d.settings.guidance}${d.settings.attention ? ` · attention ${d.settings.attention}` : ""}${d.settings.compiled ? " · compilé" : ""}`],
+  ];
+  $("result-info").replaceChildren(...rows.map(([k, v]) => h("div", { class: "irow" }, h("span", { class: "k" }, k), h("span", {}, v))));
+}
+
+function renderHistory() {
+  const box = $("history");
+  if (!state.runs.length) {
+    box.replaceChildren(h("div", { class: "muted small" }, "Aucune génération encore."));
+    return;
+  }
+  const max = Math.max(...state.runs.map((r) => r.done.timings.total), 1);
+  box.replaceChildren(
+    ...state.runs.slice(0, 12).map((r) => {
+      const t = r.done.timings;
+      const seg = (s: Stage, cls: string) => h("i", { class: cls, style: `width:${((t[s] || 0) / max) * 100}%`, title: `${STAGE_SHORT[s]} ${fmt(t[s] || 0)}` });
+      const row = h(
+        "div",
+        { class: "hrow" },
+        h("div", { class: "htop" }, h("span", { class: "hname" }, `${r.done.model.family} · ${r.job.width}×${r.job.height} · ${r.job.seconds} s`), h("span", { class: "mono small" }, fmt(t.total)), h("span", { class: "muted small" }, `VRAM ${gb(r.done.vram_peak_mb)}`)),
+        h("div", { class: "hbar" }, seg("load", "s-load"), seg("encode", "s-encode"), seg("sample", "s-sample"), seg("decode", "s-decode"), seg("write", "s-write"), seg("post", "s-post")),
+        h("div", { class: "muted small" }, `${r.done.memory?.strategy ?? ""}${r.done.settings.attention ? ` · ${r.done.settings.attention}` : ""}${r.done.settings.compiled ? " · compilé" : ""} · ${new Date(r.at).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`),
+      );
+      row.title = r.job.prompt;
+      row.onclick = () => applyJob(r.job);
+      return row;
+    }),
+  );
+}
+
+function renderStatus() {
+  const m = state.machine;
+  const parts: (Node | string)[] = [];
+  parts.push(h("span", {}, m?.gpu ? `${m.gpu} · ${gb(m.vram_mb)} VRAM` : "GPU : inconnu"));
+  if (m) parts.push(h("span", {}, `RAM libre ${gb(m.ram_free_mb)}`));
+  parts.push(h("span", {}, m?.torch ? `torch ${m.torch}${m.cuda ? " · CUDA" : " · CPU"}` : "torch absent"));
+  if (m?.sage) parts.push(h("span", { class: "ok" }, "SageAttention"));
+  parts.push(h("span", {}, `${state.models.filter((x) => x.supported && x.backend !== "mock").length} modèle(s)`));
+  parts.push(h("div", { class: "spacer" }));
+  for (const n of m?.notes ?? []) parts.push(h("span", { class: "warn" }, n));
+  $("status").replaceChildren(...parts);
+}
+
+function renderEstimate() {
+  const { width, height, seconds } = readDims();
+  const m = selectedModel();
+  const el = $("estimate");
+  if (!m) return void (el.textContent = "");
+  // Estimation à partir de l'historique : s/pas du même modèle, mis à l'échelle en pixels × images.
+  const same = state.runs.filter((r) => r.done.model.id === m.id && r.done.timings.seconds_per_step > 0);
+  if (!same.length) return void (el.textContent = m.backend === "mock" ? "" : "pas encore d'historique pour estimer le temps");
+  const ref = same[0];
+  const scale = (width * height * seconds) / (ref.job.width * ref.job.height * ref.job.seconds);
+  const steps = Number($<HTMLInputElement>("steps").value) || (ref.done.settings.steps as number) || 8;
+  const est = ref.done.timings.seconds_per_step * scale * steps + ref.done.timings.decode * scale + ref.done.timings.load * 0.3;
+  el.textContent = `≈ ${fmt(est)} d'après l'historique`;
+}
+
+function render() {
+  renderEngineBadge();
+  renderStages();
+  renderQueue();
+  renderResult();
+  renderHistory();
+  renderStatus();
+  renderEstimate();
+}
+
+// ---------- formulaire ----------
+
+function readDims() {
+  let width: number, height: number;
+  const res = $<HTMLSelectElement>("res").value;
+  if (res === "custom") {
+    width = Number($<HTMLInputElement>("width").value) || 1280;
+    height = Number($<HTMLInputElement>("height").value) || 720;
+  } else {
+    const [w, hh] = res.split("x").map(Number);
+    const o = $<HTMLSelectElement>("orient").value;
+    [width, height] = o === "p" ? [hh, w] : o === "s" ? [hh, hh] : [w, hh];
+  }
+  if (state.mode === "draft" && res !== "custom") {
+    // Brouillon : moitié de la cible, arrondie à 32.
+    width = Math.max(256, Math.round(width / 2 / 32) * 32);
+    height = Math.max(256, Math.round(height / 2 / 32) * 32);
+  }
+  const seconds = Math.min(20, Math.max(1, Number($<HTMLInputElement>("seconds").value) || 5));
+  const fps = Number($<HTMLInputElement>("fps").value) || 24;
+  return { width, height, seconds, fps };
+}
+
+function pressed(id: string) {
+  return $(id).getAttribute("aria-pressed") === "true";
+}
+
+function buildJob(): JobSpec | string {
+  if (!state.image) return "choisis une image de départ";
+  const m = selectedModel();
+  if (!m) return "aucun modèle utilisable : ajoute un dossier de modèles dans les réglages";
+  const { width, height, seconds, fps } = readDims();
+  const num = (id: string) => {
+    const v = $<HTMLInputElement>(id).value.trim();
+    return v === "" ? null : Number(v);
+  };
+  const post: JobSpec["post"] = {};
+  const pf = num("post-fps");
+  const pu = num("post-up");
+  if (pf) post.fps = pf;
+  if (pu && pu !== 1) post.upscale = pu;
+  const seedLocked = pressed("opt-seedlock");
+  const seed = seedLocked ? Number($<HTMLInputElement>("seed").value) || 0 : Math.floor(Math.random() * 2 ** 31);
+  if (!seedLocked) $<HTMLInputElement>("seed").value = String(seed);
+  return {
+    model: m.id,
+    image: state.image,
+    prompt: $<HTMLTextAreaElement>("prompt").value.trim(),
+    negative_prompt: $<HTMLTextAreaElement>("negative").value.trim(),
+    width, height, seconds, fps,
+    steps: num("steps"), guidance: num("guidance"), seed,
+    audio: pressed("opt-audio") && m.audio,
+    mode: state.mode,
+    memory: $<HTMLSelectElement>("memory").value as JobSpec["memory"],
+    compile: pressed("opt-compile"), sage: pressed("opt-sage"),
+    out_dir: state.settings?.out_dir ?? "sorties",
+    name: "",
+    post,
+  };
+}
+
+/** Remplit le formulaire depuis un job (historique, ou « rendu final »). */
+function applyJob(job: JobSpec) {
+  state.image = job.image;
+  showImage(job.image);
+  $<HTMLTextAreaElement>("prompt").value = job.prompt;
+  $<HTMLTextAreaElement>("negative").value = job.negative_prompt;
+  $<HTMLSelectElement>("model").value = job.model;
+  $<HTMLSelectElement>("res").value = "custom";
+  $("custom-res").hidden = false;
+  $<HTMLInputElement>("width").value = String(job.width);
+  $<HTMLInputElement>("height").value = String(job.height);
+  $<HTMLInputElement>("fps").value = String(job.fps);
+  $<HTMLInputElement>("seconds").value = String(job.seconds);
+  $<HTMLInputElement>("steps").value = job.steps == null ? "" : String(job.steps);
+  $<HTMLInputElement>("guidance").value = job.guidance == null ? "" : String(job.guidance);
+  $<HTMLInputElement>("seed").value = String(job.seed ?? 0);
+  $("opt-seedlock").setAttribute("aria-pressed", "true");
+  $("opt-audio").setAttribute("aria-pressed", String(job.audio));
+  $("opt-sage").setAttribute("aria-pressed", String(job.sage));
+  $("opt-compile").setAttribute("aria-pressed", String(job.compile));
+  $<HTMLSelectElement>("memory").value = job.memory;
+  $<HTMLInputElement>("post-fps").value = job.post.fps ? String(job.post.fps) : "";
+  $<HTMLInputElement>("post-up").value = job.post.upscale ? String(job.post.upscale) : "";
+  renderModelNote();
+}
+
+function showImage(path: string | null) {
+  const img = $<HTMLImageElement>("drop-img");
+  img.hidden = !path;
+  $("drop-hint").hidden = !!path;
+  if (path) img.src = api.fileUrl(path);
+}
+
+function setMode(mode: "draft" | "final") {
+  state.mode = mode;
+  document.querySelectorAll<HTMLButtonElement>("#mode button").forEach((b) => b.classList.toggle("on", b.dataset.mode === mode));
+  $("mode-hint").textContent = mode === "draft" ? "demi-résolution, pour itérer vite sur le prompt et le cadrage" : "résolution demandée, même graine : le rendu définitif";
+  renderEstimate();
+}
+
+// ---------- moteur ----------
+
+async function ensureEngine(): Promise<boolean> {
+  if (state.engine === "ready" || state.engine === "busy") return true;
+  const st = await api.status();
+  state.status = st;
+  if (!st.engine_installed) {
+    pushLog("moteur non installé : ouvre les réglages (⚙) et clique sur « Installer le moteur »");
+    return false;
+  }
+  state.engine = "starting";
+  renderEngineBadge();
+  try {
+    await api.startEngine();
+  } catch (e) {
+    state.engine = "error";
+    pushLog(String(e));
+    renderEngineBadge();
+    return false;
+  }
+  return true;
+}
+
+async function probe() {
+  await api.send({ id: 0, cmd: "probe", paths: state.settings?.model_paths ?? [] });
+}
+
+function pushLog(line: string) {
+  state.log.push(line);
+  if (state.log.length > 2000) state.log.splice(0, state.log.length - 2000);
+  renderLog();
+}
+
+async function pump() {
+  if (cur() || state.engine !== "ready") return;
+  const next = state.queue.find((q) => q.state === "waiting");
+  if (!next) return;
+  next.state = "running";
+  next.stages = {};
+  state.engine = "busy";
+  render();
+  try {
+    await api.send({ id: next.id, cmd: "generate", job: next.job });
+  } catch (e) {
+    next.state = "error";
+    next.error = String(e);
+    state.engine = "ready";
+    render();
+    void pump();
+  }
+}
+
+function onEngine(e: EngineEvent) {
+  switch (e.event) {
+    case "ready":
+      state.machine = e.machine;
+      state.engine = "ready";
+      renderEngineBadge();
+      renderStatus();
+      void probe();
+      return;
+    case "probe":
+      state.machine = e.machine;
+      state.models = e.models;
+      renderModels();
+      renderStatus();
+      void pump();
+      return;
+    case "exited":
+      state.engine = "off";
+      for (const q of state.queue) if (q.state === "running") (q.state = "error"), (q.error = "le moteur s'est arrêté");
+      render();
+      return;
+    case "log":
+      pushLog(e.text);
+      return;
+  }
+  const q = state.queue.find((x) => x.id === e.id);
+  if (!q) {
+    if (e.event === "error") pushLog(`erreur : ${e.message}`);
+    return;
+  }
+  switch (e.event) {
+    case "stage":
+      q.stages[e.stage] = { label: e.label, seconds: e.seconds, running: e.status === "start", ok: e.ok ?? true };
+      if (e.stage === "sample" && e.status === "start") q.progress = undefined;
+      renderStages();
+      return;
+    case "progress":
+      q.progress = { step: e.step, total: e.total, sps: e.seconds_per_step };
+      renderStages();
+      return;
+    case "done": {
+      q.state = "done";
+      q.done = e;
+      state.lastDone = q;
+      state.engine = "ready";
+      const run: Run = { at: Date.now(), job: q.job, done: e };
+      state.runs.unshift(run);
+      void api.recordRun(run);
+      render();
+      void pump();
+      return;
+    }
+    case "cancelled":
+      q.state = "cancelled";
+      state.engine = "ready";
+      render();
+      void pump();
+      return;
+    case "error":
+      q.state = "error";
+      q.error = e.message;
+      pushLog(`erreur #${q.id} : ${e.message}`);
+      if (e.trace) pushLog(e.trace);
+      state.engine = "ready";
+      render();
+      void pump();
+      return;
+  }
+}
+
+// ---------- réglages ----------
+
+async function openSettings() {
+  const dlg = $<HTMLDialogElement>("settings");
+  const st = await api.status();
+  const s = structuredClone(state.settings!);
+  const py = $<HTMLSelectElement>("s-python");
+  py.replaceChildren(...st.pythons.map((p) => h("option", { value: p.command, selected: p.command === s.python || undefined }, `${p.command} (${p.version})`)));
+  if (!st.pythons.length) py.replaceChildren(h("option", { value: "" }, "aucun Python 3.10–3.13 trouvé — installe-le depuis python.org"));
+  $("s-engine-state").textContent = st.engine_installed ? `installé dans ${st.venv}` : "non installé";
+  $<HTMLInputElement>("s-out").value = s.out_dir;
+  const paths = $("s-paths");
+  const renderPaths = () =>
+    paths.replaceChildren(
+      ...s.model_paths.map((p, i) => {
+        const b = h("button", { type: "button", class: "link" }, "retirer");
+        b.onclick = () => {
+          s.model_paths.splice(i, 1);
+          renderPaths();
+        };
+        return h("div", { class: "path-row mono small" }, h("span", {}, p), b);
+      }),
+    );
+  renderPaths();
+  $("s-add-path").onclick = async () => {
+    const p = await api.pickFolder();
+    if (p && !s.model_paths.includes(p)) {
+      s.model_paths.push(p);
+      renderPaths();
+    }
+  };
+  $("s-pick-out").onclick = async () => {
+    const p = await api.pickFolder();
+    if (p) $<HTMLInputElement>("s-out").value = p;
+  };
+  const log = $<HTMLPreElement>("s-setup-log");
+  $("s-install").onclick = async () => {
+    s.python = py.value || null;
+    s.out_dir = $<HTMLInputElement>("s-out").value;
+    await api.saveSettings(s);
+    state.settings = structuredClone(s);
+    log.hidden = false;
+    log.textContent = "";
+    state.engine = "off";
+    renderEngineBadge();
+    $("s-install").setAttribute("disabled", "");
+    try {
+      await api.setupEngine();
+      $("s-engine-state").textContent = `installé dans ${st.venv}`;
+    } catch (e) {
+      log.textContent += `\n✗ ${e}`;
+    } finally {
+      $("s-install").removeAttribute("disabled");
+    }
+  };
+  $("s-restart").onclick = async () => {
+    await api.stopEngine();
+    state.engine = "off";
+    await ensureEngine();
+  };
+  dlg.returnValue = "";
+  dlg.showModal();
+  await new Promise<void>((r) => dlg.addEventListener("close", () => r(), { once: true }));
+  if (dlg.returnValue !== "save") return;
+  s.python = py.value || null;
+  s.out_dir = $<HTMLInputElement>("s-out").value.trim();
+  await api.saveSettings(s);
+  state.settings = structuredClone(s);
+  if (state.engine === "ready") void probe();
+}
+
+// ---------- branchements ----------
+
+async function main() {
+  api = await backend;
+  state.settings = await api.getSettings();
+  state.runs = await api.listRuns(50);
+  api.onEngine(onEngine);
+  api.onEngineLog(pushLog);
+  api.onSetup((l) => {
+    const log = $<HTMLPreElement>("s-setup-log");
+    log.hidden = false;
+    log.textContent += l + "\n";
+    log.scrollTop = log.scrollHeight;
+  });
+  api.onDrop((paths) => {
+    const img = paths.find((p) => /\.(png|jpe?g|webp|bmp)$/i.test(p));
+    if (img) {
+      state.image = img;
+      showImage(img);
+    }
+  });
+
+  const ui = (state.settings.ui ?? {}) as Record<string, string>;
+  if (ui.negative !== undefined) $<HTMLTextAreaElement>("negative").value = ui.negative;
+  else $<HTMLTextAreaElement>("negative").value = "worst quality, inconsistent motion, blurry, jittery, distorted";
+
+  $("drop").onclick = async () => {
+    const p = await api.pickImage();
+    if (p) {
+      state.image = p;
+      showImage(p);
+    }
+  };
+  $<HTMLSelectElement>("res").onchange = () => {
+    $("custom-res").hidden = $<HTMLSelectElement>("res").value !== "custom";
+    renderEstimate();
+  };
+  for (const id of ["orient", "seconds", "width", "height", "steps", "model"]) $(id).addEventListener("change", id === "model" ? renderModelNote : renderEstimate);
+  for (const id of ["opt-audio", "opt-seedlock", "opt-sage", "opt-compile"]) {
+    $(id).onclick = () => $(id).setAttribute("aria-pressed", String(!pressed(id)));
+  }
+  document.querySelectorAll<HTMLButtonElement>("#mode button").forEach((b) => (b.onclick = () => setMode(b.dataset.mode as "draft" | "final")));
+  setMode("draft");
+
+  $("generate").onclick = async () => {
+    const job = buildJob();
+    if (typeof job === "string") return void pushLog(job);
+    state.queue.push({ id: state.nextId++, job, state: "waiting", stages: {} });
+    renderQueue();
+    state.settings!.ui = { ...(state.settings!.ui ?? {}), model: job.model, negative: job.negative_prompt };
+    void api.saveSettings(state.settings!);
+    if (await ensureEngine()) void pump();
+  };
+  $("cancel").onclick = () => void api.send({ cmd: "cancel" });
+  $("reveal").onclick = () => state.lastDone?.done && void api.revealPath(state.lastDone.done.path);
+  $("to-final").onclick = () => {
+    const q = state.lastDone;
+    if (!q) return;
+    applyJob(q.job);
+    setMode("final");
+    // Même graine, résolution cible (le double du brouillon).
+    $<HTMLInputElement>("width").value = String(q.job.width * 2);
+    $<HTMLInputElement>("height").value = String(q.job.height * 2);
+    renderEstimate();
+  };
+  $("open-settings").onclick = () => void openSettings();
+
+  render();
+  const first = (await api.startupPaths()).find((p) => /\.(png|jpe?g|webp|bmp)$/i.test(p));
+  if (first) {
+    state.image = first;
+    showImage(first);
+  }
+  const st = await api.status();
+  state.status = st;
+  if (!st.engine_installed) {
+    pushLog("Bienvenue. Le moteur Python n'est pas encore installé : ouvre les réglages (⚙) pour l'installer et indiquer le dossier de tes modèles.");
+    if (!state.settings.model_paths.length) void openSettings();
+  } else {
+    await ensureEngine();
+  }
+}
+
+void main();

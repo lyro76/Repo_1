@@ -1,0 +1,8 @@
+/target
+/ui/node_modules
+/ui/dist
+/src-tauri/gen
+/engine/**/__pycache__
+/engine/*.egg-info
+/engine/sorties
+/engine/.venv

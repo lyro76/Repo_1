@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1026" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" href="./icon.svg" />
+    <link rel="stylesheet" href="./src/style.css" />
+    <title>Cavale</title>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud" class="hud" hidden>
+      <div id="score" class="score mono">0</div>
+      <div id="coins" class="coins mono">◉ 0</div>
+      <button id="pause" class="pause" aria-label="Pause">❚❚</button>
+    </div>
+    <div id="menu" class="overlay">
+      <div class="panel">
+        <h1>Cavale</h1>
+        <p class="sub">Glisse ← → pour changer de voie, ↑ ou tap pour sauter, ↓ pour glisser.</p>
+        <div class="stats mono"><span id="m-best">record 0</span><span id="m-coins">◉ 0</span></div>
+        <button id="play" class="big">Courir</button>
+        <div class="row">
+          <button id="shop">Costumes</button>
+          <button id="mute">Son : oui</button>
+        </div>
+      </div>
+    </div>
+    <div id="over" class="overlay" hidden>
+      <div class="panel">
+        <h2>Aïe.</h2>
+        <div class="stats mono"><span id="o-score">0 m</span><span id="o-coins">◉ 0</span></div>
+        <p id="o-best" class="sub"></p>
+        <button id="retry" class="big">Recourir</button>
+        <div class="row"><button id="to-menu">Menu</button></div>
+      </div>
+    </div>
+    <div id="paused" class="overlay" hidden>
+      <div class="panel">
+        <h2>Pause</h2>
+        <button id="resume" class="big">Reprendre</button>
+        <div class="row"><button id="quit">Abandonner</button></div>
+      </div>
+    </div>
+    <div id="shop-view" class="overlay" hidden>
+      <div class="panel">
+        <h2>Costumes</h2>
+        <div id="shop-list" class="shop"></div>
+        <div class="row"><button id="shop-close">Retour</button></div>
+      </div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

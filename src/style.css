@@ -1,0 +1,29 @@
+:root { --accent: #ffd54f; --panel: rgba(11, 16, 38, 0.86); --text: #f3f4ff; --muted: #aab0d6; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0b1026; color: var(--text); font: 16px/1.4 Inter, "Segoe UI", system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
+canvas { position: fixed; inset: 0; display: block; }
+.mono { font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+.hud { position: fixed; inset: 0; pointer-events: none; padding: max(12px, env(safe-area-inset-top)) 14px 0; display: flex; justify-content: space-between; align-items: flex-start; }
+.score { font-size: 30px; font-weight: 700; text-shadow: 0 2px 8px rgba(0,0,0,0.6); }
+.coins { font-size: 20px; color: var(--accent); text-shadow: 0 2px 8px rgba(0,0,0,0.6); margin-left: auto; margin-right: 12px; margin-top: 6px; }
+.pause { pointer-events: auto; width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(0,0,0,0.35); color: #fff; font-size: 14px; }
+.overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(5, 8, 20, 0.45); backdrop-filter: blur(3px); }
+.overlay[hidden] { display: none; }
+.panel { width: min(360px, 100%); background: var(--panel); border: 1px solid rgba(255,255,255,0.12); border-radius: 18px; padding: 26px 22px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+h1 { margin: 0 0 6px; font-size: 44px; letter-spacing: 0.04em; color: var(--accent); }
+h2 { margin: 0 0 10px; font-size: 30px; }
+.sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+.stats { display: flex; justify-content: space-around; font-size: 18px; margin: 10px 0 18px; }
+button { font: inherit; color: var(--text); background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.18); border-radius: 12px; padding: 12px 18px; min-height: 48px; min-width: 48px; cursor: pointer; }
+button:active { transform: scale(0.97); }
+button.big { width: 100%; font-size: 22px; font-weight: 700; background: var(--accent); color: #1a1400; border: 0; min-height: 58px; margin-bottom: 12px; }
+.row { display: flex; gap: 10px; justify-content: center; }
+.row button { flex: 1; }
+.shop { display: grid; gap: 8px; margin-bottom: 14px; max-height: 50vh; overflow-y: auto; }
+.shop button { display: flex; align-items: center; gap: 12px; text-align: left; }
+.shop .sw { width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0; border: 2px solid rgba(255,255,255,0.3); }
+.shop .name { flex: 1; }
+.shop .price { color: var(--accent); }
+.shop button.owned .price { color: var(--muted); }
+.shop button.current { outline: 2px solid var(--accent); }

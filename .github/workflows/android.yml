@@ -1,0 +1,48 @@
+# APK Android (debug, installable directement) à chaque push, et une Release
+# « cavale-vX.Y.Z » quand la version de package.json change.
+name: Android
+
+on:
+  push:
+    branches: ["cavale"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - run: npm run build
+      - run: npx cap sync android
+      - name: APK debug
+        run: cd android && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Nom de version
+        id: v
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - run: cp android/app/build/outputs/apk/debug/app-debug.apk "Cavale-${{ steps.v.outputs.version }}.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Cavale-apk
+          path: Cavale-*.apk
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cavale-v${{ steps.v.outputs.version }}
+          name: Cavale v${{ steps.v.outputs.version }}
+          body: |
+            Jeu Android (APK de test, signé en debug : autoriser « sources inconnues » à l'installation).
+            Version web jouable : https://lyro76.github.io/Repo_1/
+          files: Cavale-*.apk

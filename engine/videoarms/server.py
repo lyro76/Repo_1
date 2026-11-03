@@ -113,7 +113,7 @@ class Engine:
             raise ValueError(f"{info.name} : {info.note}")
         if job.task not in info.tasks:
             raise ValueError(f"{info.name} ne sait pas faire « {job.task} »")
-        if info.backend != "mock" and not self.machine.torch:
+        if info.backend in ("ltx2", "wan", "sd") and not self.machine.torch:
             raise ValueError("torch n'est pas installé dans l'environnement du moteur")
         if job.needs_image and not Path(job.image).is_file():
             raise ValueError(f"image introuvable : {job.image}")

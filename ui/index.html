@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/mark.png" />
+    <link rel="stylesheet" href="/src/style.css" />
+    <title>ScreenComfy</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand"><img src="/mark.png" alt="" /><span>Screen<b>Comfy</b></span></div>
+        <div id="kind" class="segmented" role="radiogroup" aria-label="Type">
+          <button data-kind="video" class="on">Vidéo</button><button data-kind="image">Image</button><button data-kind="3d">3D</button><button data-kind="audio">Audio</button>
+        </div>
+        <div id="mode" class="segmented" role="radiogroup" aria-label="Mode">
+          <button data-mode="draft" class="on">Brouillon</button><button data-mode="final">Final</button>
+        </div>
+        <span id="mode-hint" class="muted small"></span>
+        <div class="spacer"></div>
+        <div id="loaded" class="loaded">
+          <span id="loaded-name" class="muted small">aucun modèle chargé</span>
+          <button id="load-btn" class="head-btn" title="Charger le modèle sélectionné en mémoire">Charger</button>
+          <button id="unload-btn" class="head-btn" title="Libérer la VRAM">Décharger</button>
+          <button type="button" class="chip" id="opt-autoload" aria-pressed="true" title="Charger et remplacer les modèles automatiquement selon la tâche">Auto</button>
+        </div>
+        <span id="ai-badge" class="badge ai" hidden title="L'API locale est ouverte : une IA ou un script peut piloter l'app">IA</span>
+        <span id="engine-badge" class="badge"></span>
+        <button id="open-settings" class="icon-btn" title="Réglages">⚙</button>
+      </header>
+
+      <aside class="left">
+        <div class="pane-head"><b>Entrée</b></div>
+        <div class="left-body">
+          <div id="source" class="segmented wide" role="radiogroup" aria-label="Source">
+            <button data-source="image" class="on">Depuis une image</button><button data-source="prompt">Depuis le prompt</button>
+          </div>
+          <div id="drop" class="drop" tabindex="0">
+            <img id="drop-img" alt="" hidden />
+            <div id="drop-hint"><b>Image de départ</b><br /><span class="muted small">clique ou dépose un fichier</span></div>
+          </div>
+          <textarea id="prompt" rows="3" placeholder="Décris le mouvement, la caméra, l'ambiance…"></textarea>
+          <details><summary class="muted small">Prompt négatif</summary><textarea id="negative" rows="2"></textarea></details>
+          <label class="field"><span>Modèle ou workflow</span><select id="model"></select></label>
+          <div id="model-note" class="muted small"></div>
+          <div id="comfy-note" class="muted small" hidden></div>
+          <div class="grid3" id="dims">
+            <label class="field"><span>Format</span>
+              <select id="res"><option value="1280x720">720p</option><option value="1920x1080">1080p</option><option value="854x480">480p</option><option value="custom">Autre…</option></select></label>
+            <label class="field"><span>Orientation</span>
+              <select id="orient"><option value="l">Paysage</option><option value="p">Portrait</option><option value="s">Carré</option></select></label>
+            <label class="field" id="seconds-field"><span>Durée (s)</span><input id="seconds" type="number" min="1" max="20" step="1" value="5" /></label>
+            <label class="field" id="count-field" hidden><span>Images</span><input id="count" type="number" min="1" max="16" step="1" value="1" /></label>
+          </div>
+          <label class="field" id="strength-field" hidden><span>Fidélité à l'image → liberté du modèle (<span id="strength-val">0,6</span>)</span><input id="strength" type="range" min="0.1" max="1" step="0.05" value="0.6" /></label>
+          <div id="custom-res" class="grid3" hidden>
+            <label class="field"><span>Largeur</span><input id="width" type="number" min="256" max="3840" step="16" value="1280" /></label>
+            <label class="field"><span>Hauteur</span><input id="height" type="number" min="256" max="2160" step="16" value="720" /></label>
+            <label class="field"><span>i/s</span><input id="fps" type="number" min="8" max="60" value="24" /></label>
+          </div>
+          <div class="chips">
+            <button type="button" class="chip" id="opt-audio" aria-pressed="true">Audio</button>
+            <button type="button" class="chip" id="opt-seedlock" aria-pressed="false">Garder la graine</button>
+            <span class="spacer"></span>
+            <label class="inline-field small muted">Graine <input id="seed" type="number" value="0" /></label>
+          </div>
+          <details id="advanced"><summary class="muted small">Réglages avancés</summary>
+            <div class="grid3">
+              <label class="field"><span>Étapes</span><input id="steps" type="number" min="1" max="100" placeholder="auto" /></label>
+              <label class="field"><span>Guidage</span><input id="guidance" type="number" min="0" max="20" step="0.5" placeholder="auto" /></label>
+              <label class="field"><span>Mémoire</span>
+                <select id="memory"><option value="auto">Auto</option><option value="gpu">Tout sur GPU</option><option value="cpu_offload">Composant par composant</option><option value="group_offload">Blocs streamés (RAM)</option></select></label>
+            </div>
+            <div class="chips">
+              <button type="button" class="chip" id="opt-sage" aria-pressed="false">SageAttention</button>
+              <button type="button" class="chip" id="opt-compile" aria-pressed="false">torch.compile</button>
+            </div>
+            <div class="grid3">
+              <label class="field"><span>Interpoler à (i/s)</span><input id="post-fps" type="number" min="0" max="120" placeholder="non" /></label>
+              <label class="field"><span>Upscale ×</span><input id="post-up" type="number" min="1" max="4" step="0.5" placeholder="non" /></label>
+            </div>
+          </details>
+        </div>
+        <div class="left-foot">
+          <span id="estimate" class="muted small"></span>
+          <button id="generate" class="primary">Générer</button>
+        </div>
+      </aside>
+
+      <main class="center">
+        <div class="pane-head"><b>Génération</b><span id="job-title" class="muted"></span><div class="spacer"></div><button id="cancel" class="ghost-btn" hidden>Annuler</button></div>
+        <div class="center-body">
+          <div id="stages" class="stages"></div>
+          <div id="progress" class="progress" hidden><div class="bar"><i></i></div><div id="progress-text" class="mono small muted"></div></div>
+          <div id="queue" class="queue"></div>
+          <details id="log-box" class="logbox"><summary class="muted small">Journal du moteur</summary><div id="log" class="log mono"></div></details>
+        </div>
+      </main>
+
+      <section class="right">
+        <div class="pane-head"><b>Résultat</b><div class="spacer"></div><button id="reveal" class="head-btn" hidden>Ouvrir le dossier</button><button id="to-final" class="head-btn" hidden>Rendu final</button></div>
+        <div class="right-body">
+          <div id="player" class="player"><div class="muted small">La vidéo s'affichera ici.</div></div>
+          <div id="result-info" class="info"></div>
+          <div class="pane-sub"><b>Historique</b><span class="muted small">temps par étape</span></div>
+          <div id="history" class="history"></div>
+        </div>
+      </section>
+
+      <footer id="status" class="statusbar mono"></footer>
+    </div>
+
+    <dialog id="settings">
+      <form method="dialog">
+        <h2>Réglages</h2>
+        <fieldset><legend>Moteur Python</legend>
+          <label class="field"><span>Interpréteur Python</span><select id="s-python"></select></label>
+          <div id="s-engine-state" class="muted small"></div>
+          <div class="row"><button type="button" id="s-install">Installer le moteur</button><button type="button" id="s-restart">Redémarrer le moteur</button></div>
+          <pre id="s-setup-log" class="mono setup-log" hidden></pre>
+        </fieldset>
+        <fieldset><legend>Modèles</legend>
+          <div id="s-paths" class="paths"></div>
+          <button type="button" id="s-add-path">Ajouter un dossier…</button>
+          <div class="muted small">Caches Hugging Face (dossiers <code>models--…</code>) ou dossiers diffusers. Rien n'est téléchargé.</div>
+        </fieldset>
+        <fieldset><legend>ComfyUI (optionnel)</legend>
+          <div class="muted small">Pour les workflows : LTX-2.5 GGUF, 3D (Hunyuan3D), musique (ACE-Step)… ComfyUI tourne en arrière-plan, sans fenêtre, ou l'app se branche sur un ComfyUI déjà ouvert.</div>
+          <label class="field"><span>Dossier de ComfyUI (contient main.py)</span><div class="row"><input id="s-comfy-dir" placeholder="C:\Users\…\ComfyUI" /><button type="button" id="s-pick-comfy">…</button></div></label>
+          <div class="grid2">
+            <label class="field"><span>Python de ComfyUI (vide = détection)</span><input id="s-comfy-python" placeholder="venv\Scripts\python.exe" /></label>
+            <label class="field"><span>Port</span><input id="s-comfy-port" type="number" min="1024" max="65535" value="8188" /></label>
+          </div>
+          <div id="s-comfy-state" class="muted small"></div>
+          <div class="row"><button type="button" id="s-comfy-start">Démarrer</button><button type="button" id="s-comfy-stop">Arrêter</button><button type="button" id="s-wf-import">Importer un workflow (API)…</button></div>
+          <div id="s-workflows" class="paths"></div>
+          <div class="muted small">Dans ComfyUI : menu Workflow → <b>Export (API)</b>. L'app repère l'image, les prompts, la graine, la taille et la durée, et te dit quels nœuds manquent.</div>
+        </fieldset>
+        <fieldset><legend>Pilotage par une IA</legend>
+          <label class="check"><input type="checkbox" id="s-ai" /><span>Ouvrir l'API locale : une IA (Claude, autre) ou un script peut lancer des générations, charger des modèles, lire les résultats. Ce qu'elle fait s'affiche ici.</span></label>
+          <div class="grid2">
+            <label class="field"><span>Port</span><input id="s-api-port" type="number" min="1024" max="65535" value="8765" /></label>
+            <label class="field"><span>Jeton (optionnel)</span><input id="s-api-token" placeholder="vide = aucun" /></label>
+          </div>
+          <div class="field"><span>Connecteur MCP — à donner à l'IA (Claude Code : <code>claude mcp add screencomfy -- …</code>)</span><pre id="s-mcp" class="mono setup-log cmd"></pre></div>
+          <div class="muted small">Sans interface : <code>python -m videoarms.api --port 8765 --paths "dossier modèles"</code> lance le même moteur en headless.</div>
+        </fieldset>
+        <fieldset><legend>Sorties</legend>
+          <label class="field"><span>Dossier des vidéos</span><div class="row"><input id="s-out" /><button type="button" id="s-pick-out">…</button></div></label>
+        </fieldset>
+        <div class="dialog-actions"><button value="cancel">Fermer</button><button value="save" class="primary">Enregistrer</button></div>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

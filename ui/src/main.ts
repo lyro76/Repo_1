@@ -112,7 +112,7 @@ function renderModelNote() {
     );
   } else cn.hidden = true;
   $("opt-audio").toggleAttribute("disabled", !!m && !m.audio);
-  $("opt-audio").hidden = state.kind === "image";
+  $("opt-audio").hidden = state.kind !== "video";
   renderLoaded();
   renderEstimate();
 }
@@ -175,7 +175,7 @@ function renderResult() {
   const q = state.lastDone;
   const player = $("player");
   $("reveal").hidden = !q;
-  $("to-final").hidden = !q || q.job.mode !== "draft";
+  $("to-final").hidden = !q || q.job.mode !== "draft" || !!q.origin || !(q.job.task.endsWith("v") || q.job.task.endsWith("i"));
   if (!q?.done) {
     player.replaceChildren(h("div", { class: "muted small" }, "La vidéo s'affichera ici."));
     $("result-info").replaceChildren();

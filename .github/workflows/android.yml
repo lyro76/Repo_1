@@ -23,7 +23,11 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
+      - name: SDK Android (plateforme 36)
+        run: |
+          SDKM=$(find "$ANDROID_HOME/cmdline-tools" -path '*/bin/sdkmanager' | sort | tail -1)
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" "platform-tools" > /dev/null
       - run: npm ci
       - run: npm run build
       - run: npx cap sync android
@@ -33,10 +37,14 @@ jobs:
         id: v
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
       - run: cp android/app/build/outputs/apk/debug/app-debug.apk "Cavale-${{ steps.v.outputs.version }}.apk"
+      - name: Version web (zip à ouvrir dans un navigateur ou à héberger)
+        run: cd dist && zip -qr "../Cavale-web-${{ steps.v.outputs.version }}.zip" .
       - uses: actions/upload-artifact@v4
         with:
           name: Cavale-apk
-          path: Cavale-*.apk
+          path: |
+            Cavale-*.apk
+            Cavale-web-*.zip
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
@@ -45,4 +53,6 @@ jobs:
           body: |
             Jeu Android (APK de test, signé en debug : autoriser « sources inconnues » à l'installation).
             Version web jouable : https://lyro76.github.io/Repo_1/
-          files: Cavale-*.apk
+          files: |
+            Cavale-*.apk
+            Cavale-web-*.zip

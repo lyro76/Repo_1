@@ -16,7 +16,7 @@ export const lave: TableDef = {
     w.colliders.push(disc("volcano", 186, 330, 46, { e: 0.45, tag: "volcano" }));
     w.colliders.push(disc("bump1", 104, 390, 16, { e: 0.3, kick: 950, tag: "bumper" }), disc("bump2", 268, 390, 16, { e: 0.3, kick: 950, tag: "bumper" }), disc("bump3", 134, 450, 16, { e: 0.3, kick: 950, tag: "bumper" }), disc("bump4", 238, 450, 16, { e: 0.3, kick: 950, tag: "bumper" }));
     w.colliders.push(seg("dropBack", 50, 250, 50, 346, rail)); [258, 282, 306, 330].forEach((y, i) => w.colliders.push(seg(`drop${i}`, 58, y, 58, y + 16, { e: 0.3, tag: "drop" })));
-    w.colliders.push(seg("stdBack", 276, 248, 344, 230, rail), disc("stdBackPost", 276, 248, 4, { e: 0.8 })); [282, 306, 330].forEach((x, i) => w.colliders.push(seg(`std${i}`, x, 256 - (x - 276) * 0.26, x + 18, 256 - (x + 18 - 276) * 0.26, { e: 0.3, tag: "target" })));
+    w.colliders.push(seg("stdBack", 270, 250, 344, 230, rail)); [282, 306, 330].forEach((x, i) => w.colliders.push(seg(`std${i}`, x, 256 - (x - 276) * 0.26, x + 18, 256 - (x + 18 - 276) * 0.26, { e: 0.3, tag: "target" })));
     w.colliders.push(...poly("lockCup", arc(72, 440, 18, Math.PI * 0.9, Math.PI * 2.0, 10), { e: 0.2 }));
     w.colliders.push(disc("postA", 100, 300, 6, { e: 0.9 }), disc("postB", 272, 300, 6, { e: 0.9 }), disc("postC", 300, 470, 6, { e: 0.9 }));
     w.sensors.push(S("saucer", 186, 276, 9, "saucer"), S("lock", 72, 444, 9, "lock"), S("orbitR", 352, 300, 11, "orbit", { dir: v(0, -1) }));
